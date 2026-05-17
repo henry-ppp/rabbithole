@@ -12,6 +12,20 @@ const MIN_SCALE = 0.25;
 const MAX_SCALE = 2;
 const DEFAULT_SCALE = 0.85;
 
+type Point = { x: number; y: number };
+
+function zoomAtPoint(
+  offset: Point,
+  oldScale: number,
+  newScale: number,
+  anchor: Point,
+): Point {
+  return {
+    x: anchor.x - ((anchor.x - offset.x) / oldScale) * newScale,
+    y: anchor.y - ((anchor.y - offset.y) / oldScale) * newScale,
+  };
+}
+
 type PanZoomViewportProps = {
   children: ReactNode;
   artboardWidth?: number;
@@ -35,6 +49,7 @@ export function PanZoomViewport({
   const [offset, setOffset] = useState({ x: 40, y: 40 });
   const dragRef = useRef<{
     active: boolean;
+    moved: boolean;
     startX: number;
     startY: number;
     originX: number;
@@ -44,6 +59,26 @@ export function PanZoomViewport({
   const clampScale = useCallback((value: number) => {
     return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
   }, []);
+
+  const getViewportCenter = useCallback((): Point => {
+    const container = containerRef.current;
+    if (!container) return { x: 0, y: 0 };
+    return {
+      x: container.clientWidth / 2,
+      y: container.clientHeight / 2,
+    };
+  }, []);
+
+  const applyZoom = useCallback(
+    (nextScale: number, anchor: Point) => {
+      const clamped = clampScale(nextScale);
+      setScale((oldScale) => {
+        setOffset((oldOffset) => zoomAtPoint(oldOffset, oldScale, clamped, anchor));
+        return clamped;
+      });
+    },
+    [clampScale],
+  );
 
   const resetView = useCallback(() => {
     setScale(DEFAULT_SCALE);
@@ -57,26 +92,40 @@ export function PanZoomViewport({
     const nextScale = clampScale(
       (container.clientWidth - padding) / artboardWidth,
     );
-    setScale(nextScale);
-    setOffset({ x: 24, y: 24 });
+    const anchor = {
+      x: container.clientWidth / 2,
+      y: container.clientHeight / 2,
+    };
+    setScale((oldScale) => {
+      setOffset((oldOffset) => zoomAtPoint(oldOffset, oldScale, nextScale, anchor));
+      return nextScale;
+    });
   }, [artboardWidth, clampScale]);
 
   const onWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
       event.preventDefault();
+      const container = event.currentTarget;
+      const rect = container.getBoundingClientRect();
+      const anchor = {
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      };
       const delta = event.deltaY > 0 ? -0.08 : 0.08;
-      setScale((s) => clampScale(s + delta));
+      applyZoom(scale + delta, anchor);
     },
-    [clampScale],
+    [applyZoom, scale],
   );
 
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
+      event.preventDefault();
       const target = event.currentTarget;
       target.setPointerCapture(event.pointerId);
       dragRef.current = {
         active: true,
+        moved: false,
         startX: event.clientX,
         startY: event.clientY,
         originX: offset.x,
@@ -89,13 +138,22 @@ export function PanZoomViewport({
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag?.active) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
+      drag.moved = true;
+    }
     setOffset({
-      x: drag.originX + (event.clientX - drag.startX),
-      y: drag.originY + (event.clientY - drag.startY),
+      x: drag.originX + dx,
+      y: drag.originY + dy,
     });
   }, []);
 
   const onPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (drag?.moved) {
+      window.getSelection()?.removeAllRanges();
+    }
     if (dragRef.current) {
       dragRef.current.active = false;
     }
@@ -106,6 +164,13 @@ export function PanZoomViewport({
     }
   }, []);
 
+  const zoomByDelta = useCallback(
+    (delta: number) => {
+      applyZoom(scale + delta, getViewportCenter());
+    },
+    [applyZoom, getViewportCenter, scale],
+  );
+
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
       <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
@@ -114,7 +179,7 @@ export function PanZoomViewport({
         </span>
         <button
           type="button"
-          onClick={() => setScale((s) => clampScale(s - 0.15))}
+          onClick={() => zoomByDelta(-0.15)}
           className="rounded border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
           aria-label="Zoom out"
         >
@@ -122,7 +187,7 @@ export function PanZoomViewport({
         </button>
         <button
           type="button"
-          onClick={() => setScale((s) => clampScale(s + 0.15))}
+          onClick={() => zoomByDelta(0.15)}
           className="rounded border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
           aria-label="Zoom in"
         >
@@ -149,7 +214,7 @@ export function PanZoomViewport({
 
       <div
         ref={containerRef}
-        className="relative min-h-0 flex-1 cursor-grab overflow-hidden bg-zinc-200/60 active:cursor-grabbing dark:bg-zinc-950"
+        className="relative min-h-0 flex-1 cursor-grab touch-none select-none overflow-hidden bg-zinc-200/60 active:cursor-grabbing dark:bg-zinc-950"
         onWheel={onWheel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}

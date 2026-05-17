@@ -29,6 +29,8 @@ export type CoverageMap = {
 
 export type CheatSheetMeta = {
   coverageMap?: CoverageMap;
+  /** True when the planner returned more sections than the parser safety ceiling. */
+  sectionsTruncated?: boolean;
   phases: Array<{
     name: string;
     status: "ok" | "error" | "skipped";
@@ -46,6 +48,9 @@ export type CheatSheetResponse = {
 const MAX_DEPTH = 12;
 const MAX_NODES = 500;
 const MAX_STRING_LENGTH = 8_000;
+/** Safety ceiling only — not a planning guideline for the coverage planner. */
+export const MAX_COVERAGE_SECTIONS = 24;
+const MAX_MUST_INCLUDE_PER_SECTION = 16;
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -174,7 +179,9 @@ export function validateRenderTree(node: RenderNode): {
   return { ok: true };
 }
 
-export function parseCoverageMap(raw: unknown): CoverageMap | null {
+export function parseCoverageMap(
+  raw: unknown,
+): { map: CoverageMap; sectionsTruncated: boolean } | null {
   if (!isPlainObject(raw)) {
     return null;
   }
@@ -185,8 +192,9 @@ export function parseCoverageMap(raw: unknown): CoverageMap | null {
     return null;
   }
 
+  const sectionsTruncated = raw.sections.length > MAX_COVERAGE_SECTIONS;
   const sections: CoverageSection[] = [];
-  for (const section of raw.sections.slice(0, 8)) {
+  for (const section of raw.sections.slice(0, MAX_COVERAGE_SECTIONS)) {
     if (!isPlainObject(section)) continue;
     if (
       typeof section.id !== "string" ||
@@ -198,7 +206,7 @@ export function parseCoverageMap(raw: unknown): CoverageMap | null {
     const mustInclude = Array.isArray(section.mustInclude)
       ? section.mustInclude
           .filter((item): item is string => typeof item === "string")
-          .slice(0, 12)
+          .slice(0, MAX_MUST_INCLUDE_PER_SECTION)
       : [];
     sections.push({
       id: section.id,
@@ -218,10 +226,99 @@ export function parseCoverageMap(raw: unknown): CoverageMap | null {
   }
 
   return {
-    topic: raw.topic,
-    title: raw.title,
-    sections,
+    map: {
+      topic: raw.topic,
+      title: raw.title,
+      sections,
+    },
+    sectionsTruncated,
   };
+}
+
+/** Index after the closing `}` or `]` of a balanced JSON value, or null if truncated. */
+export function findBalancedJsonEnd(text: string, start: number): number | null {
+  const open = text[start];
+  if (open !== "{" && open !== "[") {
+    return null;
+  }
+  const close = open === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === open) {
+      depth += 1;
+    } else if (ch === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return i + 1;
+      }
+    }
+  }
+  return null;
+}
+
+function jsonStartIndex(text: string): number {
+  const firstBrace = text.indexOf("{");
+  const firstBracket = text.indexOf("[");
+  if (firstBrace === -1) return firstBracket;
+  if (firstBracket === -1) return firstBrace;
+  return Math.min(firstBrace, firstBracket);
+}
+
+/** Remove trailing commas before `}` or `]` (common agent mistake). */
+function repairTrailingCommas(json: string): string {
+  return json.replace(/,(\s*[}\]])/g, "$1");
+}
+
+function parseJsonCandidate(json: string, context: string): unknown {
+  try {
+    return JSON.parse(json);
+  } catch (firstErr) {
+    const repaired = repairTrailingCommas(json);
+    if (repaired !== json) {
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        /* fall through */
+      }
+    }
+    const detail =
+      firstErr instanceof Error ? firstErr.message : String(firstErr);
+    const preview =
+      json.length > 120 ? `${json.slice(0, 120)}…` : json;
+    throw new Error(`${context}: ${detail} (near: ${preview})`);
+  }
+}
+
+function extractBalancedJsonSlice(text: string): string {
+  const start = jsonStartIndex(text);
+  if (start === -1) {
+    throw new Error("No JSON object or array found in agent response");
+  }
+  const end = findBalancedJsonEnd(text, start);
+  if (end === null) {
+    throw new Error(
+      "Incomplete JSON in agent response (truncated — nested brackets or strings not closed)",
+    );
+  }
+  return text.slice(start, end);
 }
 
 export function extractJsonFromAgentText(text: string): unknown {
@@ -235,26 +332,18 @@ export function extractJsonFromAgentText(text: string): unknown {
   } catch {
     const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (fenceMatch?.[1]) {
-      return JSON.parse(fenceMatch[1].trim());
+      const fenced = fenceMatch[1].trim();
+      const start = jsonStartIndex(fenced);
+      if (start !== -1) {
+        const end = findBalancedJsonEnd(fenced, start);
+        if (end !== null) {
+          return parseJsonCandidate(fenced.slice(start, end), "Fenced JSON");
+        }
+      }
+      return parseJsonCandidate(fenced, "Fenced JSON");
     }
-    const firstBrace = trimmed.indexOf("{");
-    const firstBracket = trimmed.indexOf("[");
-    const start =
-      firstBrace === -1
-        ? firstBracket
-        : firstBracket === -1
-          ? firstBrace
-          : Math.min(firstBrace, firstBracket);
-    if (start === -1) {
-      throw new Error("No JSON object found in agent response");
-    }
-    const slice = trimmed.slice(start);
-    const lastBrace = slice.lastIndexOf("}");
-    const lastBracket = slice.lastIndexOf("]");
-    const end = Math.max(lastBrace, lastBracket);
-    if (end === -1) {
-      throw new Error("Incomplete JSON in agent response");
-    }
-    return JSON.parse(slice.slice(0, end + 1));
+
+    const slice = extractBalancedJsonSlice(trimmed);
+    return parseJsonCandidate(slice, "Extracted JSON");
   }
 }

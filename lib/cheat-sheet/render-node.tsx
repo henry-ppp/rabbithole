@@ -47,7 +47,7 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
   switch (kind) {
     case "sheet":
       return (
-        <article className="cheat-sheet-root flex flex-col gap-4 p-8">
+        <article className="cheat-sheet-root flex flex-col gap-4 overflow-hidden p-8">
           {children.length > 0 ? (
             children.map((child, i) => (
               <RenderNodeView key={i} node={child} depth={depth + 1} />
@@ -109,15 +109,14 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
       const headers = strArray(props.headers);
       const rows = tableRows(props.rows);
       return (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-left">
+        <table className="w-full table-fixed border-collapse text-left">
             {headers.length > 0 ? (
               <thead>
                 <tr>
                   {headers.map((h, i) => (
                     <th
                       key={i}
-                      className="border border-zinc-200 bg-zinc-100 px-2 py-1 font-semibold dark:border-zinc-700 dark:bg-zinc-800"
+                      className="break-words border border-zinc-200 bg-zinc-100 px-2 py-1 font-semibold dark:border-zinc-700 dark:bg-zinc-800"
                     >
                       {h}
                     </th>
@@ -131,7 +130,7 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
                   {row.map((cell, ci) => (
                     <td
                       key={ci}
-                      className="border border-zinc-200 px-2 py-1 align-top font-mono text-[0.7rem] leading-snug dark:border-zinc-700"
+                      className="break-words border border-zinc-200 px-2 py-1 align-top font-mono text-[0.65rem] leading-snug dark:border-zinc-700"
                     >
                       {cell}
                     </td>
@@ -140,13 +139,12 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
               ))}
             </tbody>
           </table>
-        </div>
       );
     }
 
     case "code":
       return (
-        <pre className="overflow-x-auto rounded-md bg-zinc-900 px-3 py-2 font-mono text-[0.7rem] leading-relaxed text-zinc-100">
+        <pre className="whitespace-pre-wrap break-words rounded-md bg-zinc-900 px-3 py-2 font-mono text-[0.7rem] leading-relaxed text-zinc-100">
           <code>{str(props.content)}</code>
         </pre>
       );
@@ -234,7 +232,7 @@ function FallbackNode({ node }: { node: RenderNode }) {
       <p className="mb-1 font-mono text-xs font-semibold text-zinc-500">
         Unknown: {node.kind}
       </p>
-      <pre className="max-h-40 overflow-auto font-mono text-[0.65rem] text-zinc-700 dark:text-zinc-300">
+      <pre className="whitespace-pre-wrap break-words font-mono text-[0.65rem] text-zinc-700 dark:text-zinc-300">
         {JSON.stringify(node, null, 2)}
       </pre>
     </div>

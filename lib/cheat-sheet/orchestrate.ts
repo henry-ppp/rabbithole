@@ -3,6 +3,7 @@ import path from "node:path";
 import type {
   CheatSheetMeta,
   CheatSheetResponse,
+  CoverageSection,
   RenderNode,
 } from "./render-contract";
 import {
@@ -18,6 +19,12 @@ export type GenerateOptions = {
   audience?: string;
   depth?: string;
 };
+
+const WRITER_CONCURRENCY = 4;
+
+const JSON_RETRY_SUFFIX = `
+
+IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. If the outline is large, keep each mustInclude list concise (8–12 bullets per section) so the JSON fits in one response.`;
 
 function getApiKey(): string {
   const key = process.env.CURSOR_API_KEY;
@@ -85,6 +92,59 @@ async function runAgentPrompt(
   }
 }
 
+function parseAgentJson(label: string, text: string): unknown {
+  try {
+    return extractJsonFromAgentText(text);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`${label}: ${detail}`);
+  }
+}
+
+async function runAgentPromptForJson(
+  label: string,
+  prompt: string,
+  meta: CheatSheetMeta,
+): Promise<unknown> {
+  let text = await runAgentPrompt(label, prompt, meta);
+  try {
+    return parseAgentJson(label, text);
+  } catch (firstErr) {
+    const retryLabel = `${label} (json-retry)`;
+    text = await runAgentPrompt(
+      retryLabel,
+      `${prompt}${JSON_RETRY_SUFFIX}`,
+      meta,
+    );
+    try {
+      return parseAgentJson(retryLabel, text);
+    } catch {
+      throw firstErr;
+    }
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await fn(items[index], index);
+    }
+  }
+
+  const workers = Math.min(concurrency, items.length);
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+  return results;
+}
+
 export async function generateCheatSheet(
   options: GenerateOptions,
 ): Promise<CheatSheetResponse> {
@@ -115,40 +175,53 @@ ${constraints ? `\n${constraints}` : ""}
 
 Return only the coverage map JSON.`;
 
-  const plannerText = await runAgentPrompt("planner", plannerPrompt, meta);
-  const coverageRaw = extractJsonFromAgentText(plannerText);
-  const coverageMap = parseCoverageMap(coverageRaw);
-  if (!coverageMap) {
+  const coverageRaw = await runAgentPromptForJson(
+    "planner",
+    plannerPrompt,
+    meta,
+  );
+  const parsed = parseCoverageMap(coverageRaw);
+  if (!parsed) {
     throw new Error("Planner returned invalid coverage map JSON");
   }
+  const coverageMap = parsed.map;
   meta.coverageMap = coverageMap;
+  if (parsed.sectionsTruncated) {
+    meta.sectionsTruncated = true;
+  }
 
-  const writerPrompt = `${writerPlaybook}
+  const sectionNodes = await mapWithConcurrency(
+    coverageMap.sections,
+    WRITER_CONCURRENCY,
+    async (section: CoverageSection, index: number) => {
+      const writerPrompt = `${writerPlaybook}
 
 ---
 
 Topic: ${coverageMap.topic}
 Sheet title: ${coverageMap.title}
 
-Write one RenderNode subtree per section below. Return a JSON array of subtrees in the same order as sections (no markdown fences).
+Write one RenderNode subtree for the section below. Return only that subtree JSON (no markdown fences, not an array).
 
-Sections:
-${JSON.stringify(coverageMap.sections, null, 2)}`;
+Section:
+${JSON.stringify(section, null, 2)}`;
 
-  const writerText = await runAgentPrompt("section-writers", writerPrompt, meta);
-  const writerRaw = extractJsonFromAgentText(writerText);
-  const sectionNodes: RenderNode[] = [];
+      const label = `section-writer:${section.id || index}`;
+      const writerRaw = await runAgentPromptForJson(label, writerPrompt, meta);
+      const node = sanitizeRenderNode(writerRaw);
+      if (!node) {
+        throw new Error(
+          `Section writer for "${section.title}" returned invalid render node`,
+        );
+      }
+      return node;
+    },
+  );
 
-  const rawList = Array.isArray(writerRaw) ? writerRaw : [writerRaw];
-  for (const item of rawList) {
-    const node = sanitizeRenderNode(item);
-    if (node) {
-      sectionNodes.push(node);
-    }
-  }
-
-  if (sectionNodes.length === 0) {
-    throw new Error("Section writers returned no valid render nodes");
+  if (sectionNodes.length !== coverageMap.sections.length) {
+    throw new Error(
+      `Section writers produced ${sectionNodes.length} subtrees, expected ${coverageMap.sections.length}`,
+    );
   }
 
   const layoutPrompt = `${layoutPlaybook}
@@ -163,8 +236,11 @@ ${JSON.stringify(sectionNodes, null, 2)}
 
 Return the final sheet RenderNode tree JSON only.`;
 
-  const layoutText = await runAgentPrompt("layout-director", layoutPrompt, meta);
-  const layoutRaw = extractJsonFromAgentText(layoutText);
+  const layoutRaw = await runAgentPromptForJson(
+    "layout-director",
+    layoutPrompt,
+    meta,
+  );
   const tree = sanitizeRenderNode(layoutRaw);
   if (!tree) {
     throw new Error("Layout director returned invalid render tree");

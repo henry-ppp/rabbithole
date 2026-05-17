@@ -30,6 +30,7 @@ You may invent new `kind` strings if needed; keep props JSON-serializable (strin
 ## Rules
 
 - No HTML. No `fetch`. Max ~12 child nodes per section.
-- Code blocks: minimal, copy-paste friendly.
+- Code blocks: minimal, copy-paste friendly; keep lines short enough to wrap on a fixed-width sheet.
+- Tables: short cell text; avoid unbreakable wide rows.
 - Callouts: at most one per section unless critical.
 - Do not assign final column positions — the layout director handles the grid.
