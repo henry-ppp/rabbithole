@@ -7,6 +7,7 @@ import type {
   RenderNode,
 } from "./render-contract";
 import {
+  assembleCheatSheetTree,
   extractJsonFromAgentText,
   parseCoverageMap,
   sanitizeRenderNode,
@@ -25,6 +26,22 @@ const WRITER_CONCURRENCY = 4;
 const JSON_RETRY_SUFFIX = `
 
 IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. If the outline is large, keep each mustInclude list concise (8–12 bullets per section) so the JSON fits in one response.`;
+
+const SECTION_WRITER_RETRY_SUFFIX = `
+
+IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE compact section subtree only:
+- Max 6 child nodes; prefer tables and short lists over code blocks.
+- Keep every string under 120 characters; split long content across rows or list items.
+- props.title must be a short section heading (under 60 characters), not a topic essay.
+- Valid JSON only — no fences, no trailing commas, no commentary.`;
+
+const SECTION_WRITER_RETRY_SUFFIX_STRICT = `
+
+CRITICAL: JSON must be under 3500 characters total. Return the smallest valid section subtree that still hits every mustInclude item:
+- Max 4 child nodes (tables/lists only).
+- No code blocks unless unavoidable.
+- props.title under 40 characters.
+- Valid JSON only.`;
 
 function getApiKey(): string {
   const key = process.env.CURSOR_API_KEY;
@@ -105,23 +122,47 @@ async function runAgentPromptForJson(
   label: string,
   prompt: string,
   meta: CheatSheetMeta,
+  options?: { retrySuffix?: string; strictRetrySuffix?: string },
 ): Promise<unknown> {
+  const retrySuffix = options?.retrySuffix ?? JSON_RETRY_SUFFIX;
+  const strictRetrySuffix = options?.strictRetrySuffix;
+
   let text = await runAgentPrompt(label, prompt, meta);
   try {
     return parseAgentJson(label, text);
   } catch (firstErr) {
     const retryLabel = `${label} (json-retry)`;
-    text = await runAgentPrompt(
-      retryLabel,
-      `${prompt}${JSON_RETRY_SUFFIX}`,
-      meta,
-    );
+    text = await runAgentPrompt(retryLabel, `${prompt}${retrySuffix}`, meta);
     try {
       return parseAgentJson(retryLabel, text);
-    } catch {
-      throw firstErr;
+    } catch (retryErr) {
+      if (strictRetrySuffix) {
+        const strictLabel = `${label} (json-retry-strict)`;
+        text = await runAgentPrompt(
+          strictLabel,
+          `${prompt}${strictRetrySuffix}`,
+          meta,
+        );
+        try {
+          return parseAgentJson(strictLabel, text);
+        } catch {
+          /* fall through */
+        }
+      }
+      const first =
+        firstErr instanceof Error ? firstErr.message : String(firstErr);
+      const second =
+        retryErr instanceof Error ? retryErr.message : String(retryErr);
+      throw new Error(`${label}: ${first} (retry: ${second})`);
     }
   }
+}
+
+function sectionPayloadForWriter(section: CoverageSection): CoverageSection {
+  return {
+    ...section,
+    mustInclude: section.mustInclude.slice(0, 12),
+  };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -153,10 +194,9 @@ export async function generateCheatSheet(
     phases: [],
   };
 
-  const [coveragePlaybook, writerPlaybook, layoutPlaybook] = await Promise.all([
+  const [coveragePlaybook, writerPlaybook] = await Promise.all([
     loadPlaybook("coverage"),
     loadPlaybook("writer"),
-    loadPlaybook("layout"),
   ]);
 
   const constraints = [
@@ -202,12 +242,16 @@ Topic: ${coverageMap.topic}
 Sheet title: ${coverageMap.title}
 
 Write one RenderNode subtree for the section below. Return only that subtree JSON (no markdown fences, not an array).
+Keep the subtree compact (max 8 children, short strings) so the JSON is complete in one response.
 
 Section:
-${JSON.stringify(section, null, 2)}`;
+${JSON.stringify(sectionPayloadForWriter(section), null, 2)}`;
 
       const label = `section-writer:${section.id || index}`;
-      const writerRaw = await runAgentPromptForJson(label, writerPrompt, meta);
+      const writerRaw = await runAgentPromptForJson(label, writerPrompt, meta, {
+        retrySuffix: SECTION_WRITER_RETRY_SUFFIX,
+        strictRetrySuffix: SECTION_WRITER_RETRY_SUFFIX_STRICT,
+      });
       const node = sanitizeRenderNode(writerRaw);
       if (!node) {
         throw new Error(
@@ -224,27 +268,11 @@ ${JSON.stringify(section, null, 2)}`;
     );
   }
 
-  const layoutPrompt = `${layoutPlaybook}
-
----
-
-Coverage map:
-${JSON.stringify(coverageMap, null, 2)}
-
-Section subtrees:
-${JSON.stringify(sectionNodes, null, 2)}
-
-Return the final sheet RenderNode tree JSON only.`;
-
-  const layoutRaw = await runAgentPromptForJson(
-    "layout-director",
-    layoutPrompt,
-    meta,
-  );
-  const tree = sanitizeRenderNode(layoutRaw);
-  if (!tree) {
-    throw new Error("Layout director returned invalid render tree");
-  }
+  const tree = assembleCheatSheetTree(coverageMap, sectionNodes);
+  meta.phases.push({
+    name: "layout-assembler",
+    status: "ok",
+  });
 
   const validation = validateRenderTree(tree);
   if (!validation.ok) {

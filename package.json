@@ -7,10 +7,13 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:cheat-sheet:json": "tsx --test lib/cheat-sheet/json-extract.test.ts",
+    "test:cheat-sheet:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/cheat-sheet-e2e.ts"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.13",
+    "jsonrepair": "^3.14.0",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
@@ -23,6 +26,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
+    "tsx": "^4.22.1",
     "typescript": "^5"
   }
 }

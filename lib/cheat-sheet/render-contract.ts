@@ -1,3 +1,5 @@
+import { jsonrepair } from "jsonrepair";
+
 export type LayoutHint = {
   column?: number;
   span?: number;
@@ -168,6 +170,37 @@ export function countNodes(node: RenderNode): number {
   return count;
 }
 
+/** Deterministic layout: avoids sending full section subtrees to a layout agent (truncation). */
+export function assembleCheatSheetTree(
+  coverageMap: CoverageMap,
+  sectionNodes: RenderNode[],
+): RenderNode {
+  const count = sectionNodes.length;
+  const columns = count >= 8 ? 3 : count >= 3 ? 3 : count >= 2 ? 2 : 1;
+
+  return {
+    kind: "sheet",
+    props: {
+      title: coverageMap.title,
+      subtitle: coverageMap.topic,
+    },
+    children: [
+      {
+        kind: "grid",
+        props: { columns },
+        children: sectionNodes.map((node, index) => ({
+          ...node,
+          layout: {
+            ...node.layout,
+            column: index % columns,
+            density: node.layout?.density ?? "compact",
+          },
+        })),
+      },
+    ],
+  };
+}
+
 export function validateRenderTree(node: RenderNode): {
   ok: boolean;
   error?: string;
@@ -237,16 +270,16 @@ export function parseCoverageMap(
 
 /** Index after the closing `}` or `]` of a balanced JSON value, or null if truncated. */
 export function findBalancedJsonEnd(text: string, start: number): number | null {
-  const open = text[start];
-  if (open !== "{" && open !== "[") {
+  const first = text[start];
+  if (first !== "{" && first !== "[") {
     return null;
   }
-  const close = open === "{" ? "}" : "]";
-  let depth = 0;
+
+  const stack: ("" | "}" | "]")[] = [first === "{" ? "}" : "]"];
   let inString = false;
   let escaped = false;
 
-  for (let i = start; i < text.length; i++) {
+  for (let i = start + 1; i < text.length; i++) {
     const ch = text[i];
     if (inString) {
       if (escaped) {
@@ -262,11 +295,16 @@ export function findBalancedJsonEnd(text: string, start: number): number | null 
       inString = true;
       continue;
     }
-    if (ch === open) {
-      depth += 1;
-    } else if (ch === close) {
-      depth -= 1;
-      if (depth === 0) {
+    if (ch === "{") {
+      stack.push("}");
+    } else if (ch === "[") {
+      stack.push("]");
+    } else if (ch === "}" || ch === "]") {
+      const expected = stack.pop();
+      if (expected !== ch) {
+        return null;
+      }
+      if (stack.length === 0) {
         return i + 1;
       }
     }
@@ -288,19 +326,24 @@ function repairTrailingCommas(json: string): string {
 }
 
 function parseJsonCandidate(json: string, context: string): unknown {
-  try {
-    return JSON.parse(json);
-  } catch (firstErr) {
-    const repaired = repairTrailingCommas(json);
-    if (repaired !== json) {
-      try {
-        return JSON.parse(repaired);
-      } catch {
-        /* fall through */
-      }
+  const attempts: string[] = [json, repairTrailingCommas(json)];
+  const seen = new Set<string>();
+
+  for (const candidate of attempts) {
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      /* try next */
     }
+  }
+
+  try {
+    return JSON.parse(jsonrepair(json));
+  } catch (repairErr) {
     const detail =
-      firstErr instanceof Error ? firstErr.message : String(firstErr);
+      repairErr instanceof Error ? repairErr.message : String(repairErr);
     const preview =
       json.length > 120 ? `${json.slice(0, 120)}…` : json;
     throw new Error(`${context}: ${detail} (near: ${preview})`);
@@ -313,12 +356,17 @@ function extractBalancedJsonSlice(text: string): string {
     throw new Error("No JSON object or array found in agent response");
   }
   const end = findBalancedJsonEnd(text, start);
-  if (end === null) {
+  if (end !== null) {
+    return text.slice(start, end);
+  }
+  const partial = text.slice(start).trim();
+  try {
+    return jsonrepair(partial);
+  } catch {
     throw new Error(
       "Incomplete JSON in agent response (truncated — nested brackets or strings not closed)",
     );
   }
-  return text.slice(start, end);
 }
 
 export function extractJsonFromAgentText(text: string): unknown {
