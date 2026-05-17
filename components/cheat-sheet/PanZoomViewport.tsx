@@ -239,7 +239,7 @@ export function PanZoomViewport({
           Reset
         </button>
         <span className="ml-auto text-xs text-zinc-400">
-          Drag to pan · Scroll to zoom
+          Drag to pan · Scroll to zoom · Click highlighted items to explore
         </span>
       </div>
 

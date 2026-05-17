@@ -1,10 +1,17 @@
 "use client";
 
+import type { MouseEvent, PointerEvent, ReactNode } from "react";
+import type { DrillSourceKind, DrillTarget } from "./navigation";
+import { codeDrillLabel, normalizeDrillLabel } from "./navigation";
 import type { RenderNode } from "./render-contract";
+
+export type { DrillTarget };
 
 type RenderNodeProps = {
   node: RenderNode;
   depth?: number;
+  onDrill?: (target: DrillTarget) => void;
+  drilling?: boolean;
 };
 
 const KNOWN_KINDS = new Set([
@@ -36,9 +43,95 @@ function tableRows(value: unknown): string[][] {
     .map((row) => row.map((cell) => String(cell)));
 }
 
-export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
+type DrillableProps = {
+  label: string;
+  sourceKind: DrillSourceKind;
+  onDrill?: (target: DrillTarget) => void;
+  drilling?: boolean;
+  className?: string;
+  as?: "span" | "button";
+  children: ReactNode;
+};
+
+function Drillable({
+  label,
+  sourceKind,
+  onDrill,
+  drilling = false,
+  className = "",
+  as = "button",
+  children,
+}: DrillableProps) {
+  const normalized = normalizeDrillLabel(label);
+  const interactive = Boolean(onDrill && normalized && !drilling);
+
+  const handlePointerDown = (event: PointerEvent) => {
+    if (!interactive) return;
+    event.stopPropagation();
+  };
+
+  const handleClick = (event: MouseEvent) => {
+    if (!interactive || !onDrill) return;
+    event.stopPropagation();
+    onDrill({ label: normalized, sourceKind });
+  };
+
+  const sharedClass = [
+    className,
+    interactive
+      ? "cursor-pointer rounded-sm underline decoration-transparent decoration-1 underline-offset-2 transition-colors hover:bg-violet-100/80 hover:decoration-violet-500 dark:hover:bg-violet-950/40 dark:hover:decoration-violet-400"
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (!interactive) {
+    return <span className={className}>{children}</span>;
+  }
+
+  if (as === "span") {
+    return (
+      <span
+        role="button"
+        tabIndex={0}
+        title="Explore this topic"
+        className={sharedClass}
+        onPointerDown={handlePointerDown}
+        onClick={handleClick}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onDrill?.({ label: normalized, sourceKind });
+          }
+        }}
+      >
+        {children}
+      </span>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      title="Explore this topic"
+      className={`text-left ${sharedClass}`}
+      onPointerDown={handlePointerDown}
+      onClick={handleClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function RenderNodeView({
+  node,
+  depth = 0,
+  onDrill,
+  drilling = false,
+}: RenderNodeProps) {
   const { kind, props = {}, children = [] } = node;
   const compact = node.layout?.density === "compact";
+  const childProps = { onDrill, drilling };
 
   if (!KNOWN_KINDS.has(kind)) {
     return <FallbackNode node={node} />;
@@ -50,7 +143,7 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
         <article className="cheat-sheet-root flex flex-col gap-4 overflow-hidden p-8">
           {children.length > 0 ? (
             children.map((child, i) => (
-              <RenderNodeView key={i} node={child} depth={depth + 1} />
+              <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
             ))
           ) : (
             <SheetHeader props={props} />
@@ -78,7 +171,7 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
                   : undefined
               }
             >
-              <RenderNodeView node={child} depth={depth + 1} />
+              <RenderNodeView node={child} depth={depth + 1} {...childProps} />
             </div>
           ))}
         </div>
@@ -94,12 +187,21 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
         >
           {props.title ? (
             <h2 className="border-b border-zinc-200 pb-1 text-sm font-semibold uppercase tracking-wide text-zinc-800 dark:border-zinc-700 dark:text-zinc-100">
-              {str(props.title)}
+              <Drillable
+                label={str(props.title)}
+                sourceKind="section"
+                onDrill={onDrill}
+                drilling={drilling}
+                as="span"
+                className="font-semibold uppercase tracking-wide"
+              >
+                {str(props.title)}
+              </Drillable>
             </h2>
           ) : null}
           <div className="flex flex-col gap-2">
             {children.map((child, i) => (
-              <RenderNodeView key={i} node={child} depth={depth + 1} />
+              <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
             ))}
           </div>
         </section>
@@ -110,44 +212,71 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
       const rows = tableRows(props.rows);
       return (
         <table className="w-full table-fixed border-collapse text-left">
-            {headers.length > 0 ? (
-              <thead>
-                <tr>
-                  {headers.map((h, i) => (
-                    <th
-                      key={i}
-                      className="break-words border border-zinc-200 bg-zinc-100 px-2 py-1 font-semibold dark:border-zinc-700 dark:bg-zinc-800"
+          {headers.length > 0 ? (
+            <thead>
+              <tr>
+                {headers.map((h, i) => (
+                  <th
+                    key={i}
+                    className="break-words border border-zinc-200 bg-zinc-100 px-2 py-1 font-semibold dark:border-zinc-700 dark:bg-zinc-800"
+                  >
+                    <Drillable
+                      label={h}
+                      sourceKind="table"
+                      onDrill={onDrill}
+                      drilling={drilling}
+                      as="span"
                     >
                       {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-            ) : null}
-            <tbody>
-              {rows.map((row, ri) => (
-                <tr key={ri}>
-                  {row.map((cell, ci) => (
-                    <td
-                      key={ci}
-                      className="break-words border border-zinc-200 px-2 py-1 align-top font-mono text-[0.65rem] leading-snug dark:border-zinc-700"
+                    </Drillable>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+          ) : null}
+          <tbody>
+            {rows.map((row, ri) => (
+              <tr key={ri}>
+                {row.map((cell, ci) => (
+                  <td
+                    key={ci}
+                    className="break-words border border-zinc-200 px-2 py-1 align-top font-mono text-[0.65rem] leading-snug dark:border-zinc-700"
+                  >
+                    <Drillable
+                      label={cell}
+                      sourceKind="table"
+                      onDrill={onDrill}
+                      drilling={drilling}
+                      as="span"
                     >
                       {cell}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </Drillable>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       );
     }
 
-    case "code":
+    case "code": {
+      const content = str(props.content);
+      const drillLabel = codeDrillLabel(content);
       return (
-        <pre className="whitespace-pre-wrap break-words rounded-md bg-zinc-900 px-3 py-2 font-mono text-[0.7rem] leading-relaxed text-zinc-100">
-          <code>{str(props.content)}</code>
-        </pre>
+        <Drillable
+          label={drillLabel}
+          sourceKind="code"
+          onDrill={onDrill}
+          drilling={drilling}
+          className="block w-full"
+        >
+          <pre className="whitespace-pre-wrap break-words rounded-md bg-zinc-900 px-3 py-2 font-mono text-[0.7rem] leading-relaxed text-zinc-100">
+            <code>{content}</code>
+          </pre>
+        </Drillable>
       );
+    }
 
     case "callout": {
       const tone = str(props.tone, "info");
@@ -157,20 +286,44 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
           : tone === "tip"
             ? "border-emerald-500/50 bg-emerald-50 text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-100"
             : "border-blue-500/50 bg-blue-50 text-blue-950 dark:bg-blue-950/30 dark:text-blue-100";
+      const title = str(props.title);
+      const content = str(props.content);
+      const calloutLabel =
+        title || content.split(/\r?\n/)[0]?.trim() || content;
+
       return (
         <aside
           className={`rounded-md border-l-4 px-3 py-2 text-xs ${toneClass}`}
         >
-          {props.title ? (
-            <p className="mb-1 font-semibold">{str(props.title)}</p>
+          {title ? (
+            <p className="mb-1 font-semibold">
+              <Drillable
+                label={title}
+                sourceKind="callout"
+                onDrill={onDrill}
+                drilling={drilling}
+                as="span"
+                className="font-semibold"
+              >
+                {title}
+              </Drillable>
+            </p>
+          ) : content ? (
+            <Drillable
+              label={calloutLabel}
+              sourceKind="callout"
+              onDrill={onDrill}
+              drilling={drilling}
+              className="block"
+            >
+              <p>{content}</p>
+            </Drillable>
           ) : null}
           {children.length > 0
             ? children.map((child, i) => (
-                <RenderNodeView key={i} node={child} depth={depth + 1} />
+                <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
               ))
-            : props.content
-              ? <p>{str(props.content)}</p>
-              : null}
+            : null}
         </aside>
       );
     }
@@ -194,7 +347,15 @@ export function RenderNodeView({ node, depth = 0 }: RenderNodeProps) {
         >
           {items.map((item, i) => (
             <li key={i} className="text-zinc-700 dark:text-zinc-300">
-              {item}
+              <Drillable
+                label={item}
+                sourceKind="list"
+                onDrill={onDrill}
+                drilling={drilling}
+                as="span"
+              >
+                {item}
+              </Drillable>
             </li>
           ))}
         </ListTag>

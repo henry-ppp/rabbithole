@@ -14,6 +14,7 @@ type PostBody = {
   topic?: string;
   audience?: string;
   depth?: string;
+  parentContext?: string;
   useFixture?: boolean;
 };
 
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
       topic,
       audience: body.audience?.trim(),
       depth: body.depth?.trim(),
+      parentContext: body.parentContext?.trim(),
     });
 
     return NextResponse.json(result);

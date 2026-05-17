@@ -22,6 +22,7 @@ export type GenerateOptions = {
   topic: string;
   audience?: string;
   depth?: string;
+  parentContext?: string;
 };
 
 /** Sequential-ish to reduce truncated parallel agent responses. */
@@ -266,10 +267,15 @@ export async function generateCheatSheet(
     .filter(Boolean)
     .join("\n");
 
+  const parentContext = options.parentContext?.trim().slice(0, 500);
+  const parentLine = parentContext
+    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the subtopic below; do not repeat the entire parent survey unless needed for coherence.\n`
+    : "";
+
   const plannerPrompt = `${coveragePlaybook}
 
 ---
-
+${parentLine}
 Topic: ${options.topic}
 ${constraints ? `\n${constraints}` : ""}
 

@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  MAX_TOPIC_LENGTH,
+  cacheKey,
+  canDrillDeeper,
+  codeDrillLabel,
+  composeChildTopic,
+  createFrame,
+  normalizeDrillLabel,
+  truncateTopic,
+} from "./navigation";
+import type { CheatSheetFrame } from "./navigation";
+import type { CheatSheetResponse } from "./render-contract";
+
+function stubResponse(): CheatSheetResponse {
+  return {
+    tree: { kind: "sheet", props: { title: "Test" } },
+    meta: { source: "fixture", phases: [] },
+  };
+}
+
+function frame(label: string, topic: string): CheatSheetFrame {
+  return createFrame(label, topic, stubResponse());
+}
+
+describe("normalizeDrillLabel", () => {
+  it("trims and collapses whitespace", () => {
+    assert.equal(normalizeDrillLabel("  foo   bar  "), "foo bar");
+  });
+
+  it("returns empty for whitespace-only", () => {
+    assert.equal(normalizeDrillLabel("   "), "");
+  });
+});
+
+describe("composeChildTopic", () => {
+  it("builds depth-1 topic from root", () => {
+    const root = frame("Git rebase", "Git rebase");
+    const topic = composeChildTopic([root], {
+      label: "Interactive rebase",
+      sourceKind: "section",
+    });
+    assert.equal(topic, "Git rebase — Interactive rebase");
+  });
+
+  it("joins deeper path with middle dot separators", () => {
+    const root = frame("Git rebase", "Git rebase");
+    const child = frame("Interactive rebase", "Git rebase — Interactive rebase");
+    const topic = composeChildTopic([root, child], {
+      label: "git rebase -i",
+      sourceKind: "table",
+    });
+    assert.equal(
+      topic,
+      "Git rebase › Interactive rebase — git rebase -i",
+    );
+  });
+
+  it("truncates to max topic length", () => {
+    const long = "a".repeat(150);
+    const root = frame("root", long);
+    const topic = composeChildTopic([root], {
+      label: "b".repeat(100),
+      sourceKind: "list",
+    });
+    assert.equal(topic.length, MAX_TOPIC_LENGTH);
+  });
+});
+
+describe("cacheKey", () => {
+  it("is stable for same inputs", () => {
+    const a = cacheKey("Topic", "devs", "exam");
+    const b = cacheKey("Topic", "devs", "exam");
+    assert.equal(a, b);
+  });
+
+  it("differs when topic changes", () => {
+    assert.notEqual(cacheKey("A"), cacheKey("B"));
+  });
+});
+
+describe("truncateTopic", () => {
+  it("leaves short topics unchanged", () => {
+    assert.equal(truncateTopic("hello"), "hello");
+  });
+});
+
+describe("canDrillDeeper", () => {
+  it("allows drill until max depth", () => {
+    assert.equal(canDrillDeeper(7), true);
+    assert.equal(canDrillDeeper(8), false);
+  });
+});
+
+describe("codeDrillLabel", () => {
+  it("uses first line up to 80 chars", () => {
+    assert.equal(codeDrillLabel("git rebase -i HEAD~3\nmore"), "git rebase -i HEAD~3");
+  });
+});

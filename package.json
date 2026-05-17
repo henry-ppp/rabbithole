@@ -8,7 +8,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:cheat-sheet:json": "tsx --test lib/cheat-sheet/json-extract.test.ts",
+    "test:cheat-sheet:json": "tsx --test lib/cheat-sheet/json-extract.test.ts lib/cheat-sheet/navigation.test.ts",
     "test:cheat-sheet:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/cheat-sheet-e2e.ts"
   },
   "dependencies": {
