@@ -14,6 +14,12 @@ const DEFAULT_SCALE = 0.85;
 
 type Point = { x: number; y: number };
 
+type ViewState = {
+  scale: number;
+  offset: Point;
+};
+
+/** Keep the artboard point under `anchor` (container-local px) fixed on screen. */
 function zoomAtPoint(
   offset: Point,
   oldScale: number,
@@ -24,6 +30,17 @@ function zoomAtPoint(
     x: anchor.x - ((anchor.x - offset.x) / oldScale) * newScale,
     y: anchor.y - ((anchor.y - offset.y) / oldScale) * newScale,
   };
+}
+
+function clampScale(value: number): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
+}
+
+function wheelScaleFactor(deltaY: number, deltaMode: number): number {
+  // DOM_DELTA_LINE (1) / DOM_DELTA_PAGE (2) send larger deltas than pixel mode (0).
+  const normalized =
+    deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * 400 : deltaY;
+  return Math.exp(-normalized * 0.002);
 }
 
 type PanZoomViewportProps = {
@@ -40,13 +57,14 @@ export function PanZoomViewport({
   className = "",
 }: PanZoomViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState(() => {
-    if (typeof window === "undefined") return DEFAULT_SCALE;
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? 1
-      : DEFAULT_SCALE;
+  const [view, setView] = useState<ViewState>(() => {
+    const scale =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? 1
+        : DEFAULT_SCALE;
+    return { scale, offset: { x: 40, y: 40 } };
   });
-  const [offset, setOffset] = useState({ x: 40, y: 40 });
   const dragRef = useRef<{
     active: boolean;
     moved: boolean;
@@ -56,65 +74,69 @@ export function PanZoomViewport({
     originY: number;
   } | null>(null);
 
-  const clampScale = useCallback((value: number) => {
-    return Math.min(MAX_SCALE, Math.max(MIN_SCALE, value));
-  }, []);
+  const { scale, offset } = view;
 
-  const getViewportCenter = useCallback((): Point => {
-    const container = containerRef.current;
-    if (!container) return { x: 0, y: 0 };
-    return {
-      x: container.clientWidth / 2,
-      y: container.clientHeight / 2,
-    };
+  const zoomTo = useCallback((computeScale: (prev: number) => number, anchor: Point) => {
+    setView((prev) => {
+      const nextScale = clampScale(computeScale(prev.scale));
+      if (nextScale === prev.scale) {
+        return prev;
+      }
+      return {
+        scale: nextScale,
+        offset: zoomAtPoint(prev.offset, prev.scale, nextScale, anchor),
+      };
+    });
   }, []);
-
-  const applyZoom = useCallback(
-    (nextScale: number, anchor: Point) => {
-      const clamped = clampScale(nextScale);
-      setScale((oldScale) => {
-        setOffset((oldOffset) => zoomAtPoint(oldOffset, oldScale, clamped, anchor));
-        return clamped;
-      });
-    },
-    [clampScale],
-  );
 
   const resetView = useCallback(() => {
-    setScale(DEFAULT_SCALE);
-    setOffset({ x: 40, y: 40 });
+    setView({ scale: DEFAULT_SCALE, offset: { x: 40, y: 40 } });
   }, []);
 
   const fitToWidth = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
     const padding = 48;
-    const nextScale = clampScale(
-      (container.clientWidth - padding) / artboardWidth,
-    );
     const anchor = {
       x: container.clientWidth / 2,
       y: container.clientHeight / 2,
     };
-    setScale((oldScale) => {
-      setOffset((oldOffset) => zoomAtPoint(oldOffset, oldScale, nextScale, anchor));
-      return nextScale;
+    setView((prev) => {
+      const nextScale = clampScale(
+        (container.clientWidth - padding) / artboardWidth,
+      );
+      return {
+        scale: nextScale,
+        offset: zoomAtPoint(prev.offset, prev.scale, nextScale, anchor),
+      };
     });
-  }, [artboardWidth, clampScale]);
+  }, [artboardWidth]);
+
+  const containerPointFromEvent = useCallback(
+    (clientX: number, clientY: number): Point | null => {
+      const container = containerRef.current;
+      if (!container) return null;
+      const rect = container.getBoundingClientRect();
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+      };
+    },
+    [],
+  );
 
   const onWheel = useCallback(
     (event: WheelEvent<HTMLDivElement>) => {
       event.preventDefault();
-      const container = event.currentTarget;
-      const rect = container.getBoundingClientRect();
-      const anchor = {
-        x: event.clientX - rect.left,
-        y: event.clientY - rect.top,
-      };
-      const delta = event.deltaY > 0 ? -0.08 : 0.08;
-      applyZoom(scale + delta, anchor);
+      event.stopPropagation();
+
+      const anchor = containerPointFromEvent(event.clientX, event.clientY);
+      if (!anchor) return;
+
+      const factor = wheelScaleFactor(event.deltaY, event.deltaMode);
+      zoomTo((s) => s * factor, anchor);
     },
-    [applyZoom, scale],
+    [containerPointFromEvent, zoomTo],
   );
 
   const onPointerDown = useCallback(
@@ -143,10 +165,13 @@ export function PanZoomViewport({
     if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
       drag.moved = true;
     }
-    setOffset({
-      x: drag.originX + dx,
-      y: drag.originY + dy,
-    });
+    setView((prev) => ({
+      ...prev,
+      offset: {
+        x: drag.originX + dx,
+        y: drag.originY + dy,
+      },
+    }));
   }, []);
 
   const onPointerUp = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -166,9 +191,15 @@ export function PanZoomViewport({
 
   const zoomByDelta = useCallback(
     (delta: number) => {
-      applyZoom(scale + delta, getViewportCenter());
+      const container = containerRef.current;
+      if (!container) return;
+      const anchor = {
+        x: container.clientWidth / 2,
+        y: container.clientHeight / 2,
+      };
+      zoomTo((s) => s + delta, anchor);
     },
-    [applyZoom, getViewportCenter, scale],
+    [zoomTo],
   );
 
   return (
