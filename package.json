@@ -2,13 +2,15 @@
   "name": "rabbithole",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.13",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4"
