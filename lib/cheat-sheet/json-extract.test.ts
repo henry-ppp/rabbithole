@@ -2,8 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   assembleCheatSheetTree,
+  buildFallbackSectionNode,
   extractJsonFromAgentText,
   findBalancedJsonEnd,
+  parseSectionWriterOutput,
+  shortSectionTitle,
 } from "./render-contract";
 
 describe("findBalancedJsonEnd", () => {
@@ -27,6 +30,66 @@ describe("findBalancedJsonEnd", () => {
     const truncated =
       '{"kind":"section","children":[{"kind":"list","props":{"items":["a","b"';
     assert.equal(findBalancedJsonEnd(truncated, 0), null);
+  });
+});
+
+describe("shortSectionTitle", () => {
+  it("strips parenthetical subtitles", () => {
+    assert.equal(
+      shortSectionTitle("Fixed Income (term structure, valuation)"),
+      "Fixed Income",
+    );
+  });
+});
+
+describe("buildFallbackSectionNode", () => {
+  it("builds a valid section from coverage metadata", () => {
+    const node = buildFallbackSectionNode({
+      id: "fi",
+      title: "Fixed Income (term structure)",
+      goal: "Yield and credit basics",
+      mustInclude: ["YTM", "duration", "credit spread"],
+    });
+    assert.equal(node.kind, "section");
+    assert.equal(node.props?.title, "Fixed Income");
+    assert.ok((node.children?.length ?? 0) >= 1);
+  });
+});
+
+describe("parseSectionWriterOutput", () => {
+  it("unwraps a one-element array", () => {
+    const node = parseSectionWriterOutput(
+      [{ kind: "section", props: { title: "Ethics" }, children: [] }],
+      "Ethics",
+    );
+    assert.equal(node?.kind, "section");
+    assert.equal(node?.props?.title, "Ethics");
+  });
+
+  it("unwraps a section wrapper key", () => {
+    const node = parseSectionWriterOutput(
+      {
+        section: {
+          kind: "section",
+          props: { title: "Exam format" },
+          children: [{ kind: "list", props: { items: ["a"] } }],
+        },
+      },
+      "Exam format",
+    );
+    assert.equal(node?.kind, "section");
+    assert.equal(node?.children?.length, 1);
+  });
+
+  it("infers section when kind is missing but children exist", () => {
+    const node = parseSectionWriterOutput(
+      {
+        title: "Exam format & professional behaviours",
+        children: [{ kind: "list", props: { items: ["CFA Institute"] } }],
+      },
+      "Exam format & professional behaviours",
+    );
+    assert.equal(node?.kind, "section");
   });
 });
 

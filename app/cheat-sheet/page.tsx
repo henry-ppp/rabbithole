@@ -16,12 +16,14 @@ export default function CheatSheetPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CheatSheetResponse | null>(null);
   const [phases, setPhases] = useState<Phase[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
 
   const runGeneration = useCallback(
     async (useFixture: boolean) => {
       setLoading(true);
       setError(null);
       setPhases([]);
+      setWarnings([]);
 
       try {
         const res = await fetch("/api/cheat-sheet", {
@@ -45,9 +47,11 @@ export default function CheatSheetPage() {
 
         setData(json);
         setPhases(json.meta?.phases ?? []);
+        setWarnings(json.meta?.warnings ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
         setData(null);
+        setWarnings([]);
       } finally {
         setLoading(false);
       }
@@ -118,10 +122,17 @@ export default function CheatSheetPage() {
         </div>
       </header>
 
-      {(error || phases.length > 0) && (
+      {(error || phases.length > 0 || warnings.length > 0) && (
         <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-900/80">
           {error ? (
             <p className="text-red-600 dark:text-red-400">{error}</p>
+          ) : null}
+          {warnings.length > 0 ? (
+            <ul className="mt-1 space-y-1 text-amber-800 dark:text-amber-200">
+              {warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
           ) : null}
           {phases.length > 0 ? (
             <ul className="mt-1 flex flex-wrap gap-3 text-zinc-600 dark:text-zinc-400">

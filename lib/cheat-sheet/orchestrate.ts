@@ -8,9 +8,12 @@ import type {
 } from "./render-contract";
 import {
   assembleCheatSheetTree,
+  buildFallbackSectionNode,
+  describeInvalidSectionOutput,
   extractJsonFromAgentText,
   parseCoverageMap,
-  sanitizeRenderNode,
+  parseSectionWriterOutput,
+  shortSectionTitle,
   validateRenderTree,
 } from "./render-contract";
 import { loadPlaybook } from "./playbooks";
@@ -21,7 +24,8 @@ export type GenerateOptions = {
   depth?: string;
 };
 
-const WRITER_CONCURRENCY = 4;
+/** Sequential-ish to reduce truncated parallel agent responses. */
+const WRITER_CONCURRENCY = 2;
 
 const JSON_RETRY_SUFFIX = `
 
@@ -37,11 +41,17 @@ IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE comp
 
 const SECTION_WRITER_RETRY_SUFFIX_STRICT = `
 
-CRITICAL: JSON must be under 3500 characters total. Return the smallest valid section subtree that still hits every mustInclude item:
-- Max 4 child nodes (tables/lists only).
-- No code blocks unless unavoidable.
-- props.title under 40 characters.
+CRITICAL: JSON must be under 2500 characters total. Return the smallest valid section subtree that still hits every mustInclude item:
+- Max 3 child nodes (one table OR one list plus optional short text).
+- No code blocks.
+- props.title: short label only (e.g. "Fixed Income"), not the full parenthetical topic line.
 - Valid JSON only.`;
+
+const SECTION_WRITER_TEMPLATE_SUFFIX = `
+
+Return ONLY this JSON shape (fill in; stay under 2000 characters total):
+{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"list","props":{"items":["bullet1","bullet2"]}}]}
+Use a list OR a table — not both. Cover mustInclude items across bullets or table rows.`;
 
 function getApiKey(): string {
   const key = process.env.CURSOR_API_KEY;
@@ -161,8 +171,58 @@ async function runAgentPromptForJson(
 function sectionPayloadForWriter(section: CoverageSection): CoverageSection {
   return {
     ...section,
-    mustInclude: section.mustInclude.slice(0, 12),
+    title: shortSectionTitle(section.title),
+    mustInclude: section.mustInclude.slice(0, 10),
   };
+}
+
+async function runSectionWriter(
+  label: string,
+  basePrompt: string,
+  section: CoverageSection,
+  meta: CheatSheetMeta,
+): Promise<RenderNode> {
+  const displayTitle = shortSectionTitle(section.title);
+  const attempts: Array<{ label: string; prompt: string }> = [
+    { label, prompt: basePrompt },
+    { label: `${label} (json-retry)`, prompt: `${basePrompt}${SECTION_WRITER_RETRY_SUFFIX}` },
+    {
+      label: `${label} (json-retry-strict)`,
+      prompt: `${basePrompt}${SECTION_WRITER_RETRY_SUFFIX_STRICT}`,
+    },
+    {
+      label: `${label} (template)`,
+      prompt: `${basePrompt}${SECTION_WRITER_TEMPLATE_SUFFIX.replace("SHORT_TITLE_HERE", displayTitle)}`,
+    },
+  ];
+
+  let lastError = "unknown error";
+
+  for (const attempt of attempts) {
+    const text = await runAgentPrompt(attempt.label, attempt.prompt, meta);
+    try {
+      const raw = parseAgentJson(attempt.label, text);
+      const node = parseSectionWriterOutput(raw, displayTitle);
+      if (node) {
+        return node;
+      }
+      lastError = describeInvalidSectionOutput(raw);
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const fallback = buildFallbackSectionNode(section);
+  meta.warnings ??= [];
+  meta.warnings.push(
+    `Section "${section.title}" used programmatic fallback after agent failures: ${lastError}`,
+  );
+  meta.phases.push({
+    name: `${label} (fallback)`,
+    status: "ok",
+    error: lastError,
+  });
+  return fallback;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -248,17 +308,7 @@ Section:
 ${JSON.stringify(sectionPayloadForWriter(section), null, 2)}`;
 
       const label = `section-writer:${section.id || index}`;
-      const writerRaw = await runAgentPromptForJson(label, writerPrompt, meta, {
-        retrySuffix: SECTION_WRITER_RETRY_SUFFIX,
-        strictRetrySuffix: SECTION_WRITER_RETRY_SUFFIX_STRICT,
-      });
-      const node = sanitizeRenderNode(writerRaw);
-      if (!node) {
-        throw new Error(
-          `Section writer for "${section.title}" returned invalid render node`,
-        );
-      }
-      return node;
+      return runSectionWriter(label, writerPrompt, section, meta);
     },
   );
 

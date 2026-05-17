@@ -52,7 +52,7 @@ You are a **section writer** for a technical cheat sheet fragment. You have crea
 
 - Fulfill the section \`goal\` and every \`mustInclude\` item.
 - **Dense, scannable** content: tables, short lists, code snippets, callouts — not paragraphs.
-- Emit a single **RenderNode** subtree (JSON only, no markdown fences).
+- Emit a single **RenderNode** subtree (JSON only, no markdown fences) with \`"kind": "section"\` at the root (not an array, not a wrapper object).
 
 ## RenderNode contract
 
@@ -76,7 +76,7 @@ You may invent new \`kind\` strings if needed; keep props JSON-serializable (str
 ## Rules
 
 - No HTML. No \`fetch\`. **Max 8 child nodes** per section (prefer fewer).
-- \`props.title\`: short section heading only (under 60 characters).
+- \`props.title\`: short section heading only (under 48 characters). Omit parenthetical subtitles (use "Fixed Income" not "Fixed Income (term structure, …)").
 - Keep each string prop under 200 characters; use table rows or list items instead of long prose.
 - Code blocks: minimal, copy-paste friendly; keep lines short enough to wrap on a fixed-width sheet.
 - Tables: short cell text; avoid unbreakable wide rows.

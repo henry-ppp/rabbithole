@@ -33,6 +33,8 @@ export type CheatSheetMeta = {
   coverageMap?: CoverageMap;
   /** True when the planner returned more sections than the parser safety ceiling. */
   sectionsTruncated?: boolean;
+  /** Non-fatal issues (e.g. agent fallback sections). */
+  warnings?: string[];
   phases: Array<{
     name: string;
     status: "ok" | "error" | "skipped";
@@ -93,6 +95,195 @@ export function sanitizeRenderNode(raw: unknown, depth = 0): RenderNode | null {
   }
 
   return node;
+}
+
+const SECTION_WRAPPER_KEYS = [
+  "section",
+  "subtree",
+  "node",
+  "renderNode",
+  "RenderNode",
+  "data",
+  "result",
+  "output",
+] as const;
+
+/** Normalize common agent mistakes before sanitizeRenderNode. */
+export function coerceSectionRenderNode(
+  raw: unknown,
+  fallbackTitle?: string,
+): unknown {
+  if (raw === null || raw === undefined) {
+    return raw;
+  }
+
+  if (Array.isArray(raw)) {
+    const objects = raw.filter(isPlainObject);
+    if (objects.length === 0) {
+      return raw;
+    }
+    if (objects.length === 1) {
+      return coerceSectionRenderNode(objects[0], fallbackTitle);
+    }
+    const first = objects[0];
+    if (
+      typeof first.kind === "string" &&
+      first.kind === "section" &&
+      Array.isArray(first.children)
+    ) {
+      return coerceSectionRenderNode(first, fallbackTitle);
+    }
+    return {
+      kind: "section",
+      props: {
+        title:
+          fallbackTitle ??
+          (typeof first.props === "object" &&
+          first.props !== null &&
+          !Array.isArray(first.props) &&
+          typeof (first.props as Record<string, unknown>).title === "string"
+            ? (first.props as Record<string, unknown>).title
+            : "Section"),
+      },
+      children: objects,
+    };
+  }
+
+  if (!isPlainObject(raw)) {
+    return raw;
+  }
+
+  for (const key of SECTION_WRAPPER_KEYS) {
+    if (key in raw && isPlainObject(raw[key])) {
+      return coerceSectionRenderNode(raw[key], fallbackTitle);
+    }
+  }
+
+  if (typeof raw.kind !== "string") {
+    const withChildren = Array.isArray(raw.children);
+    const title =
+      typeof raw.title === "string"
+        ? raw.title
+        : isPlainObject(raw.props) && typeof raw.props.title === "string"
+          ? raw.props.title
+          : fallbackTitle;
+    if (withChildren || title) {
+      const props =
+        isPlainObject(raw.props) && typeof raw.props === "object"
+          ? { ...raw.props }
+          : {};
+      if (title && typeof props.title !== "string") {
+        props.title = title;
+      }
+      return {
+        kind: "section",
+        props: Object.keys(props).length > 0 ? props : { title: fallbackTitle ?? "Section" },
+        children: raw.children,
+        layout: raw.layout,
+      };
+    }
+  }
+
+  if (
+    typeof raw.kind === "string" &&
+    raw.kind !== "section" &&
+    Array.isArray(raw.children)
+  ) {
+    return { ...raw, kind: "section" };
+  }
+
+  return raw;
+}
+
+export function describeInvalidSectionOutput(raw: unknown): string {
+  if (Array.isArray(raw)) {
+    return `expected one section object, got an array of length ${raw.length}`;
+  }
+  if (!isPlainObject(raw)) {
+    return `expected a JSON object, got ${raw === null ? "null" : typeof raw}`;
+  }
+  const keys = Object.keys(raw).slice(0, 8).join(", ");
+  if (typeof raw.kind !== "string" || !raw.kind.trim()) {
+    return `missing or empty "kind" (keys: ${keys})`;
+  }
+  return `could not sanitize subtree with kind "${raw.kind}" (keys: ${keys})`;
+}
+
+/** Short label for props.title (strip parenthetical subtitles). */
+export function shortSectionTitle(title: string, maxLen = 48): string {
+  const paren = title.indexOf("(");
+  const base = paren > 0 ? title.slice(0, paren).trim() : title.trim();
+  if (base.length <= maxLen) return base;
+  return `${base.slice(0, maxLen - 1)}…`;
+}
+
+/** Deterministic section when the agent returns truncated or invalid JSON. */
+export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
+  const title = shortSectionTitle(section.title);
+  const items = section.mustInclude
+    .filter((item) => typeof item === "string" && item.trim())
+    .slice(0, 16)
+    .map((item) => item.trim().slice(0, 160));
+
+  const children: RenderNode[] = [];
+
+  if (section.goal.trim()) {
+    children.push({
+      kind: "text",
+      props: { content: section.goal.trim().slice(0, 200) },
+    });
+  }
+
+  if (items.length >= 6) {
+    children.push({
+      kind: "table",
+      props: {
+        headers: ["Point", "Notes"],
+        rows: items.map((item) => {
+          const colon = item.indexOf(":");
+          if (colon > 0 && colon < 60) {
+            return [
+              item.slice(0, colon).trim().slice(0, 48),
+              item.slice(colon + 1).trim().slice(0, 120),
+            ];
+          }
+          return [item.slice(0, 48), item.slice(48, 168) || "—"];
+        }),
+      },
+    });
+  } else if (items.length > 0) {
+    children.push({
+      kind: "list",
+      props: { items },
+    });
+  } else {
+    children.push({
+      kind: "text",
+      props: { content: "Content unavailable — regenerate this section." },
+    });
+  }
+
+  return {
+    kind: "section",
+    props: { title },
+    layout: { density: section.density ?? "compact" },
+    children,
+  };
+}
+
+export function parseSectionWriterOutput(
+  raw: unknown,
+  sectionTitle: string,
+): RenderNode | null {
+  const coerced = coerceSectionRenderNode(raw, sectionTitle);
+  const node = sanitizeRenderNode(coerced);
+  if (node) {
+    if (node.kind === "section" && node.props?.title === undefined && sectionTitle) {
+      node.props = { ...node.props, title: sectionTitle };
+    }
+    return node;
+  }
+  return null;
 }
 
 function sanitizeProps(value: unknown): Record<string, unknown> | undefined {
@@ -363,10 +554,52 @@ function extractBalancedJsonSlice(text: string): string {
   try {
     return jsonrepair(partial);
   } catch {
+    const closed = closeTruncatedJson(partial);
+    if (closed) {
+      try {
+        return jsonrepair(closed);
+      } catch {
+        /* fall through */
+      }
+    }
     throw new Error(
       "Incomplete JSON in agent response (truncated — nested brackets or strings not closed)",
     );
   }
+}
+
+/** Close open strings/brackets so jsonrepair has a chance on hard truncation. */
+function closeTruncatedJson(partial: string): string | null {
+  let inString = false;
+  let escaped = false;
+  const stack: ("" | "}" | "]")[] = [];
+
+  for (let i = 0; i < partial.length; i++) {
+    const ch = partial[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") stack.push("}");
+    else if (ch === "[") stack.push("]");
+    else if (ch === "}" || ch === "]") {
+      const expected = stack.pop();
+      if (expected !== ch) return null;
+    }
+  }
+
+  let closed = partial;
+  if (inString) closed += '"';
+  while (stack.length > 0) {
+    closed += stack.pop();
+  }
+  return closed.length > partial.length ? closed : null;
 }
 
 export function extractJsonFromAgentText(text: string): unknown {

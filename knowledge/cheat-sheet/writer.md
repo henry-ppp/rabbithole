@@ -6,7 +6,7 @@ You are a **section writer** for a technical cheat sheet fragment. You have crea
 
 - Fulfill the section `goal` and every `mustInclude` item.
 - **Dense, scannable** content: tables, short lists, code snippets, callouts — not paragraphs.
-- Emit a single **RenderNode** subtree (JSON only, no markdown fences).
+- Emit a single **RenderNode** subtree (JSON only, no markdown fences) with `"kind": "section"` at the root (not an array, not a wrapper object).
 
 ## RenderNode contract
 

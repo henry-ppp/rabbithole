@@ -54,6 +54,20 @@ async function main() {
     process.exit(1);
   }
 
+  if (meta.warnings?.length) {
+    console.warn(`Warnings (${meta.warnings.length}):`);
+    for (const w of meta.warnings) {
+      console.warn(`  - ${w}`);
+    }
+  }
+
+  const fallbacks = meta.phases.filter((p) => p.name.includes("(fallback)"));
+  if (fallbacks.length > 0) {
+    console.warn(
+      `Note: ${fallbacks.length} section(s) used programmatic fallback (sheet still valid).`,
+    );
+  }
+
   console.log("Phases:", meta.phases.map((p) => p.name).join(", "));
 }
 
