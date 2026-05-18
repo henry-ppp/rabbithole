@@ -15,8 +15,6 @@ import { RenderNodeView } from "@/lib/cheat-sheet/render-node";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 
-type Phase = CheatSheetResponse["meta"]["phases"][number];
-
 type FetchOptions = {
   topic: string;
   useFixture?: boolean;
@@ -52,7 +50,6 @@ export default function CheatSheetPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stack, setStack] = useState<CheatSheetFrame[]>([]);
-  const [phases, setPhases] = useState<Phase[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [depthLimitMessage, setDepthLimitMessage] = useState<string | null>(
     null,
@@ -65,7 +62,6 @@ export default function CheatSheetPage() {
   const canExplore = stack.length > 0 && !loading;
 
   const applyResponse = useCallback((json: CheatSheetResponse) => {
-    setPhases(json.meta?.phases ?? []);
     setWarnings(json.meta?.warnings ?? []);
   }, []);
 
@@ -77,7 +73,6 @@ export default function CheatSheetPage() {
       setLoading(true);
       setError(null);
       setDepthLimitMessage(null);
-      setPhases([]);
       setWarnings([]);
       setStack([]);
       sessionCache.current.clear();
@@ -158,7 +153,6 @@ export default function CheatSheetPage() {
 
       setLoading(true);
       setError(null);
-      setPhases([]);
       setWarnings([]);
 
       try {
@@ -289,10 +283,7 @@ export default function CheatSheetPage() {
         </nav>
       ) : null}
 
-      {(error ||
-        depthLimitMessage ||
-        phases.length > 0 ||
-        warnings.length > 0) && (
+      {(error || depthLimitMessage || warnings.length > 0) && (
         <div className="shrink-0 border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-900/80">
           {error ? (
             <p className="text-red-600 dark:text-red-400">{error}</p>
@@ -308,31 +299,6 @@ export default function CheatSheetPage() {
                 <li key={warning}>{warning}</li>
               ))}
             </ul>
-          ) : null}
-          {phases.length > 0 ? (
-            <ul className="mt-1 flex flex-wrap gap-3 text-zinc-600 dark:text-zinc-400">
-              {phases.map((phase) => (
-                <li key={phase.name}>
-                  <span className="font-medium">{phase.name}</span>:{" "}
-                  <span
-                    className={
-                      phase.status === "ok"
-                        ? "text-emerald-600 dark:text-emerald-400"
-                        : "text-red-600 dark:text-red-400"
-                    }
-                  >
-                    {phase.status}
-                  </span>
-                  {phase.runId ? ` ? ${phase.runId.slice(0, 8)}` : null}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {activeResponse?.meta.coverageMap ? (
-            <p className="mt-1 text-zinc-500">
-              Coverage: {activeResponse.meta.coverageMap.sections.length}{" "}
-              sections ? {activeResponse.meta.coverageMap.title}
-            </p>
           ) : null}
         </div>
       )}
