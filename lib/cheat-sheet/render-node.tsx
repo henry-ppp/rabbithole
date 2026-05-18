@@ -155,28 +155,44 @@ export function RenderNodeView({
       return <SheetHeader props={props} />;
 
     case "grid": {
-      const columns = Math.max(
-        1,
-        Number(props.columns) || children.length || 1,
-      );
+      const columns = Math.min(3, Math.max(1, Number(props.columns) || 3));
+      const columnBuckets: RenderNode[][] = Array.from({ length: columns }, () => []);
+      const fullWidth: RenderNode[] = [];
+
+      children.forEach((child, i) => {
+        const span = child.layout?.span ?? 1;
+        if (span >= columns) {
+          fullWidth.push(child);
+          return;
+        }
+        const column =
+          child.layout?.column !== undefined
+            ? child.layout.column % columns
+            : i % columns;
+        columnBuckets[column].push(child);
+      });
+
       return (
-        <div
-          className="grid gap-4"
-          style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
-        >
-          {children.map((child, i) => (
-            <div
-              key={i}
-              className="min-w-0"
-              style={
-                child.layout?.column !== undefined
-                  ? { gridColumn: (child.layout.column % columns) + 1 }
-                  : undefined
-              }
-            >
+        <div className="flex flex-col gap-4">
+          {fullWidth.map((child, i) => (
+            <div key={`full-${i}`} className="min-w-0">
               <RenderNodeView node={child} depth={depth + 1} {...childProps} />
             </div>
           ))}
+          <div className="flex items-start gap-4">
+            {columnBuckets.map((bucket, col) => (
+              <div key={col} className="flex min-w-0 flex-1 flex-col gap-4">
+                {bucket.map((child, i) => (
+                  <RenderNodeView
+                    key={i}
+                    node={child}
+                    depth={depth + 1}
+                    {...childProps}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       );
     }
