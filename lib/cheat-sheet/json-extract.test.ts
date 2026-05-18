@@ -105,6 +105,24 @@ describe("assembleCheatSheetTree", () => {
     assert.equal(tree.kind, "sheet");
     assert.equal(tree.children?.[0]?.kind, "grid");
     assert.equal(tree.children?.[0]?.children?.length, 2);
+    assert.equal(tree.children?.[0]?.props?.columns, 2);
+  });
+
+  it("lays out all sections in one horizontal row", () => {
+    const sections = Array.from({ length: 6 }, (_, i) => ({
+      kind: "section" as const,
+      props: { title: `S${i}` },
+    }));
+    const tree = assembleCheatSheetTree(
+      { topic: "t", title: "T", sections: [] },
+      sections,
+    );
+    const grid = tree.children?.[0];
+    assert.equal(grid?.props?.columns, 6);
+    assert.deepEqual(
+      grid?.children?.map((c) => c.layout?.column),
+      [0, 1, 2, 3, 4, 5],
+    );
   });
 });
 

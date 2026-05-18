@@ -339,7 +339,10 @@ function sanitizeLayout(value: unknown): LayoutHint | undefined {
   }
   const layout: LayoutHint = {};
   if (typeof value.column === "number" && Number.isFinite(value.column)) {
-    layout.column = Math.max(0, Math.min(5, Math.floor(value.column)));
+    layout.column = Math.max(
+      0,
+      Math.min(MAX_COVERAGE_SECTIONS - 1, Math.floor(value.column)),
+    );
   }
   if (typeof value.span === "number" && Number.isFinite(value.span)) {
     layout.span = Math.max(1, Math.min(3, Math.floor(value.span)));
@@ -367,7 +370,7 @@ export function assembleCheatSheetTree(
   sectionNodes: RenderNode[],
 ): RenderNode {
   const count = sectionNodes.length;
-  const columns = count >= 8 ? 3 : count >= 3 ? 3 : count >= 2 ? 2 : 1;
+  const columns = Math.max(1, count);
 
   return {
     kind: "sheet",
@@ -383,7 +386,7 @@ export function assembleCheatSheetTree(
           ...node,
           layout: {
             ...node.layout,
-            column: index % columns,
+            column: index,
             density: node.layout?.density ?? "compact",
           },
         })),

@@ -155,7 +155,10 @@ export function RenderNodeView({
       return <SheetHeader props={props} />;
 
     case "grid": {
-      const columns = Math.min(3, Math.max(1, Number(props.columns) || 3));
+      const columns = Math.max(
+        1,
+        Number(props.columns) || children.length || 1,
+      );
       return (
         <div
           className="grid gap-4"
