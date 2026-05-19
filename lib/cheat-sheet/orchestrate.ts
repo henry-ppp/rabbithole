@@ -11,6 +11,7 @@ import {
   buildFallbackSectionNode,
   describeInvalidSectionOutput,
   extractJsonFromAgentText,
+  hasThreeLayerSection,
   parseCoverageMap,
   parseSectionWriterOutput,
   shortSectionTitle,
@@ -30,29 +31,27 @@ const WRITER_CONCURRENCY = 2;
 
 const JSON_RETRY_SUFFIX = `
 
-IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. If the outline is large, keep each mustInclude list concise (8–12 bullets per section) so the JSON fits in one response.`;
+IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. Keep anchors to 1–3 per section and subtopics to 4–8 so the JSON fits in one response.`;
 
 const SECTION_WRITER_RETRY_SUFFIX = `
 
-IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE compact section subtree only:
-- Max 6 child nodes; prefer tables and short lists over code blocks.
-- Keep every string under 120 characters; split long content across rows or list items.
-- props.title must be a short section heading (under 60 characters), not a topic essay.
-- Valid JSON only — no fences, no trailing commas, no commentary.`;
+IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE compact three-layer section subtree:
+- Max 6 children: one text (goal), up to 2 anchor nodes, one topicMap.
+- Each anchor: label + teachGoal props, one list or table child covering mustCover.
+- topicMap: nodes from subtopics only, no explanatory text in hints.
+- Keep strings under 120 characters; valid JSON only.`;
 
 const SECTION_WRITER_RETRY_SUFFIX_STRICT = `
 
-CRITICAL: JSON must be under 2500 characters total. Return the smallest valid section subtree that still hits every mustInclude item:
-- Max 3 child nodes (one table OR one list plus optional short text).
-- No code blocks.
-- props.title: short label only (e.g. "Fixed Income"), not the full parenthetical topic line.
+CRITICAL: JSON must be under 3000 characters total. Smallest valid three-layer section:
+- text (goal) + one anchor (list child) + topicMap (nodes array only).
+- No code blocks. props.title: short label only.
 - Valid JSON only.`;
 
 const SECTION_WRITER_TEMPLATE_SUFFIX = `
 
-Return ONLY this JSON shape (fill in; stay under 2000 characters total):
-{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"list","props":{"items":["bullet1","bullet2"]}}]}
-Use a list OR a table — not both. Cover mustInclude items across bullets or table rows.`;
+Return ONLY this JSON shape (fill in; stay under 2500 characters total):
+{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"anchor","props":{"id":"a1","label":"ANCHOR_LABEL","teachGoal":"TEACH_GOAL"},"children":[{"kind":"list","props":{"items":["item1","item2"]}}]},{"kind":"topicMap","props":{"layout":"cluster-flow","nodes":[{"id":"s1","label":"Subtopic","group":"Group"}]}}]}`;
 
 function getApiKey(): string {
   const key = process.env.CURSOR_API_KEY;
@@ -170,11 +169,31 @@ async function runAgentPromptForJson(
 }
 
 function sectionPayloadForWriter(section: CoverageSection): CoverageSection {
-  return {
+  const payload: CoverageSection = {
     ...section,
     title: shortSectionTitle(section.title),
-    mustInclude: section.mustInclude.slice(0, 10),
   };
+
+  if (section.anchors) {
+    payload.anchors = section.anchors.slice(0, 3).map((anchor) => ({
+      ...anchor,
+      mustCover: anchor.mustCover.slice(0, 6),
+    }));
+  }
+
+  if (section.subtopics) {
+    payload.subtopics = section.subtopics.slice(0, 8);
+  }
+
+  if (section.edges) {
+    payload.edges = section.edges.slice(0, 6);
+  }
+
+  if (section.mustInclude) {
+    payload.mustInclude = section.mustInclude.slice(0, 10);
+  }
+
+  return payload;
 }
 
 async function runSectionWriter(
@@ -269,8 +288,8 @@ export async function generateCheatSheet(
 
   const parentContext = options.parentContext?.trim().slice(0, 500);
   const parentLine = parentContext
-    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the subtopic below; do not repeat the entire parent survey unless needed for coherence.\n`
-    : "";
+    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the subtopic below; select 1–3 anchors to teach at this drill level and defer the rest to subtopic structure. Do not repeat the entire parent survey unless needed for coherence.\n`
+    : "\nAt this root level, select 1–3 anchors per section to teach now; defer remaining coverage to subtopic structure.\n";
 
   const plannerPrompt = `${coveragePlaybook}
 
@@ -300,6 +319,7 @@ Return only the coverage map JSON.`;
     coverageMap.sections,
     WRITER_CONCURRENCY,
     async (section: CoverageSection, index: number) => {
+      const threeLayer = hasThreeLayerSection(section);
       const writerPrompt = `${writerPlaybook}
 
 ---
@@ -308,7 +328,8 @@ Topic: ${coverageMap.topic}
 Sheet title: ${coverageMap.title}
 
 Write one RenderNode subtree for the section below. Return only that subtree JSON (no markdown fences, not an array).
-Keep the subtree compact (max 8 children, short strings) so the JSON is complete in one response.
+${threeLayer ? "Use the three-layer anatomy: text (goal) + anchor nodes (teach mustCover) + topicMap (bare subtopics)." : "Legacy section: use text + list/table from mustInclude."}
+Keep the subtree compact (max 6 children, short strings) so the JSON is complete in one response.
 
 Section:
 ${JSON.stringify(sectionPayloadForWriter(section), null, 2)}`;

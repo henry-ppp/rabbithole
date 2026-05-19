@@ -4,7 +4,14 @@ export const MAX_NAV_DEPTH = 8;
 export const MAX_TOPIC_LENGTH = 200;
 export const MAX_DRILL_LABEL_LENGTH = 120;
 
-export type DrillSourceKind = "section" | "callout" | "table" | "list" | "code";
+export type DrillSourceKind =
+  | "section"
+  | "anchor"
+  | "subtopic"
+  | "callout"
+  | "table"
+  | "list"
+  | "code";
 
 export type DrillTarget = {
   label: string;

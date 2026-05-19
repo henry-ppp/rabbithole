@@ -12,96 +12,128 @@ export const gitRebaseFixture: CheatSheetResponse = {
         {
           id: "basics",
           title: "Basics",
-          goal: "Core rebase commands",
-          mustInclude: ["interactive rebase", "onto"],
-        },
-        {
-          id: "recovery",
-          title: "Recovery",
-          goal: "Undo and conflict handling",
-          mustInclude: ["reflog", "abort"],
+          goal: "Replay commits onto a new base — everyday workflow and interactive editing.",
+          anchors: [
+            {
+              id: "what-rebase",
+              label: "What rebase does",
+              teachGoal: "Rebase rewrites commit history by replaying your branch onto another base.",
+              mustCover: [
+                "git rebase main — replay onto main",
+                "git fetch origin && git rebase origin/main",
+              ],
+              linkedSubtopics: ["onto"],
+            },
+            {
+              id: "interactive",
+              label: "Interactive rebase",
+              teachGoal: "Edit, reorder, squash, or drop commits in a todo list.",
+              mustCover: [
+                "git rebase -i HEAD~3",
+                "pick / squash / fixup / drop actions",
+              ],
+            },
+          ],
+          subtopics: [
+            { id: "onto", label: "Rebase --onto", hint: "Transplant", group: "Advanced" },
+            { id: "conflicts", label: "Conflict resolution", group: "Recovery" },
+            { id: "recovery", label: "Abort & reflog", hint: "Undo", group: "Recovery" },
+          ],
+          edges: [
+            { from: "conflicts", to: "recovery", relation: "leads-to" },
+          ],
         },
       ],
     },
   },
   tree: {
     kind: "sheet",
-    props: { title: "Git Rebase — Quick Reference", subtitle: "Quick reference" },
+    props: { title: "Git Rebase — Quick Reference", subtitle: "Git rebase" },
     children: [
       {
         kind: "grid",
-        props: { columns: 3 },
+        props: { columns: 1 },
         children: [
           {
             kind: "section",
-            props: { title: "Everyday commands" },
-            layout: { column: 0, density: "compact" },
+            props: { title: "Basics" },
+            layout: { column: 0, density: "compact", span: 1 },
             children: [
               {
-                kind: "table",
+                kind: "text",
                 props: {
-                  headers: ["Command", "What it does"],
-                  rows: [
-                    ["git rebase main", "Replay branch onto main"],
-                    ["git rebase -i HEAD~3", "Interactive last 3 commits"],
-                    ["git rebase --onto new base old", "Transplant range"],
-                  ],
+                  content:
+                    "Replay commits onto a new base — everyday workflow and interactive editing.",
                 },
               },
               {
-                kind: "code",
+                kind: "anchor",
                 props: {
-                  language: "bash",
-                  content: "git fetch origin\ngit rebase origin/main",
+                  id: "what-rebase",
+                  label: "What rebase does",
+                  teachGoal:
+                    "Rebase rewrites commit history by replaying your branch onto another base.",
                 },
-              },
-            ],
-          },
-          {
-            kind: "section",
-            props: { title: "Interactive actions" },
-            layout: { column: 1, density: "compact" },
-            children: [
-              {
-                kind: "table",
-                props: {
-                  headers: ["Action", "Effect"],
-                  rows: [
-                    ["pick", "Keep commit as-is"],
-                    ["reword", "Change message"],
-                    ["squash", "Melds into previous"],
-                    ["fixup", "Squash, drop message"],
-                    ["drop", "Remove commit"],
-                  ],
-                },
-              },
-            ],
-          },
-          {
-            kind: "section",
-            props: { title: "Recovery & conflicts" },
-            layout: { column: 2, density: "compact" },
-            children: [
-              {
-                kind: "callout",
-                props: { tone: "warning", title: "Never rebase public history" },
                 children: [
                   {
-                    kind: "text",
+                    kind: "table",
                     props: {
-                      content:
-                        "Rebasing rewrites SHAs. Only rebase local or feature branches.",
+                      headers: ["Command", "What it does"],
+                      rows: [
+                        ["git rebase main", "Replay branch onto main"],
+                        ["git fetch && git rebase origin/main", "Update then rebase"],
+                      ],
                     },
                   },
                 ],
               },
               {
-                kind: "list",
+                kind: "anchor",
                 props: {
-                  items: [
-                    "git rebase --abort — stop and restore pre-rebase",
-                    "git rebase --continue — after resolving conflicts",
-                    "git reflog — find lost HEAD positions",
+                  id: "interactive",
+                  label: "Interactive rebase",
+                  teachGoal: "Edit, reorder, squash, or drop commits in a todo list.",
+                },
+                children: [
+                  {
+                    kind: "table",
+                    props: {
+                      headers: ["Action", "Effect"],
+                      rows: [
+                        ["pick", "Keep commit as-is"],
+                        ["squash", "Melds into previous"],
+                        ["fixup", "Squash, drop message"],
+                        ["drop", "Remove commit"],
+                      ],
+                    },
+                  },
+                ],
+              },
+              {
+                kind: "topicMap",
+                props: {
+                  layout: "cluster-flow",
+                  nodes: [
+                    {
+                      id: "onto",
+                      label: "Rebase --onto",
+                      hint: "Transplant",
+                      group: "Advanced",
+                    },
+                    {
+                      id: "conflicts",
+                      label: "Conflict resolution",
+                      group: "Recovery",
+                    },
+                    {
+                      id: "recovery",
+                      label: "Abort & reflog",
+                      hint: "Undo",
+                      group: "Recovery",
+                    },
+                  ],
+                  edges: [
+                    { from: "conflicts", to: "recovery", relation: "leads-to" },
                   ],
                 },
               },

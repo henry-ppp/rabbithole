@@ -38,4 +38,4 @@ Return **only** one root RenderNode tree JSON (no markdown fences):
 }
 ```
 
-Preserve writer content; only reorganize, wrap, and set layout hints. Do not drop `mustInclude` coverage.
+Preserve writer content; only reorganize, wrap, and set layout hints. Do not drop coverage.

@@ -5,6 +5,7 @@ import {
   buildFallbackSectionNode,
   extractJsonFromAgentText,
   findBalancedJsonEnd,
+  parseCoverageMap,
   parseSectionWriterOutput,
   shortSectionTitle,
 } from "./render-contract";
@@ -42,8 +43,69 @@ describe("shortSectionTitle", () => {
   });
 });
 
+describe("parseCoverageMap", () => {
+  it("parses three-layer section with anchors and subtopics", () => {
+    const parsed = parseCoverageMap({
+      topic: "Git rebase",
+      title: "Git Rebase",
+      sections: [
+        {
+          id: "basics",
+          title: "Basics",
+          goal: "Core rebase workflow",
+          anchors: [
+            {
+              id: "a1",
+              label: "What rebase does",
+              teachGoal: "Replay commits",
+              mustCover: ["git rebase main"],
+            },
+          ],
+          subtopics: [
+            { id: "s1", label: "Recovery", group: "Advanced", hint: "Undo" },
+          ],
+          edges: [{ from: "s1", to: "s2", relation: "leads-to" }],
+        },
+      ],
+    });
+
+    assert.ok(parsed);
+    const section = parsed!.map.sections[0];
+    assert.equal(section.anchors?.length, 1);
+    assert.equal(section.subtopics?.length, 1);
+    assert.equal(section.edges?.length, 1);
+  });
+});
+
 describe("buildFallbackSectionNode", () => {
-  it("builds a valid section from coverage metadata", () => {
+  it("builds three-layer section from anchors and subtopics", () => {
+    const node = buildFallbackSectionNode({
+      id: "basics",
+      title: "Basics",
+      goal: "Core rebase workflow",
+      anchors: [
+        {
+          id: "a1",
+          label: "What rebase does",
+          teachGoal: "Replay commits onto a new base",
+          mustCover: ["git rebase main", "git fetch first"],
+        },
+      ],
+      subtopics: [
+        { id: "s1", label: "Recovery", group: "Advanced" },
+        { id: "s2", label: "Rebase --onto", group: "Advanced" },
+      ],
+    });
+
+    assert.equal(node.kind, "section");
+    assert.equal(node.props?.title, "Basics");
+    const kinds = (node.children ?? []).map((child) => child.kind);
+    assert.ok(kinds.includes("text"));
+    assert.ok(kinds.includes("anchor"));
+    assert.ok(kinds.includes("topicMap"));
+  });
+
+  it("builds legacy section from mustInclude when no anchors/subtopics", () => {
     const node = buildFallbackSectionNode({
       id: "fi",
       title: "Fixed Income (term structure)",
@@ -53,6 +115,7 @@ describe("buildFallbackSectionNode", () => {
     assert.equal(node.kind, "section");
     assert.equal(node.props?.title, "Fixed Income");
     assert.ok((node.children?.length ?? 0) >= 1);
+    assert.equal(node.children?.some((c) => c.kind === "topicMap"), false);
   });
 });
 
@@ -81,6 +144,34 @@ describe("parseSectionWriterOutput", () => {
     assert.equal(node?.children?.length, 1);
   });
 
+  it("parses three-layer section with anchor and topicMap", () => {
+    const node = parseSectionWriterOutput(
+      {
+        kind: "section",
+        props: { title: "Basics" },
+        children: [
+          { kind: "text", props: { content: "Framing sentence." } },
+          {
+            kind: "anchor",
+            props: { label: "Anchor", teachGoal: "Learn this" },
+            children: [{ kind: "list", props: { items: ["a"] } }],
+          },
+          {
+            kind: "topicMap",
+            props: {
+              nodes: [{ id: "s1", label: "Subtopic", group: "G" }],
+            },
+          },
+        ],
+      },
+      "Basics",
+    );
+    assert.equal(node?.kind, "section");
+    assert.equal(node?.children?.length, 3);
+    assert.equal(node?.children?.[1]?.kind, "anchor");
+    assert.equal(node?.children?.[2]?.kind, "topicMap");
+  });
+
   it("infers section when kind is missing but children exist", () => {
     const node = parseSectionWriterOutput(
       {
@@ -105,6 +196,26 @@ describe("assembleCheatSheetTree", () => {
     assert.equal(tree.kind, "sheet");
     assert.equal(tree.children?.[0]?.kind, "grid");
     assert.equal(tree.children?.[0]?.children?.length, 2);
+  });
+
+  it("spans full width for sections with large topicMaps", () => {
+    const tree = assembleCheatSheetTree(
+      { topic: "git", title: "Git", sections: [] },
+      [
+        {
+          kind: "section",
+          props: { title: "Basics" },
+          children: [
+            { kind: "text", props: { content: "Goal" } },
+            { kind: "anchor", props: { label: "A" }, children: [] },
+            { kind: "anchor", props: { label: "B" }, children: [] },
+            { kind: "topicMap", props: { nodes: [{ id: "s1", label: "S" }] } },
+          ],
+        },
+      ],
+    );
+    const section = tree.children?.[0]?.children?.[0];
+    assert.equal(section?.layout?.span, 1);
   });
 });
 

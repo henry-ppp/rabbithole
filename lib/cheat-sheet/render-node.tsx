@@ -19,6 +19,8 @@ const KNOWN_KINDS = new Set([
   "title",
   "grid",
   "section",
+  "anchor",
+  "topicMap",
   "table",
   "code",
   "callout",
@@ -42,6 +44,57 @@ function tableRows(value: unknown): string[][] {
     .filter((row): row is unknown[] => Array.isArray(row))
     .map((row) => row.map((cell) => String(cell)));
 }
+
+type TopicMapNode = {
+  id: string;
+  label: string;
+  hint?: string;
+  group?: string;
+  highlighted?: boolean;
+};
+
+type TopicMapEdge = {
+  from: string;
+  to: string;
+  relation?: string;
+};
+
+function topicMapNodes(value: unknown): TopicMapNode[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => isPlainObject(item))
+    .map((item) => ({
+      id: str(item.id),
+      label: str(item.label),
+      ...(typeof item.hint === "string" ? { hint: item.hint } : {}),
+      ...(typeof item.group === "string" ? { group: item.group } : {}),
+      ...(item.highlighted === true ? { highlighted: true } : {}),
+    }))
+    .filter((node) => node.id && node.label);
+}
+
+function topicMapEdges(value: unknown): TopicMapEdge[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => isPlainObject(item))
+    .map((item) => ({
+      from: str(item.from),
+      to: str(item.to),
+      ...(typeof item.relation === "string" ? { relation: item.relation } : {}),
+    }))
+    .filter((edge) => edge.from && edge.to);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const RELATION_LABELS: Record<string, string> = {
+  requires: "requires",
+  "leads-to": "leads to",
+  contrasts: "contrasts",
+  "part-of": "part of",
+};
 
 type DrillableProps = {
   label: string;
@@ -226,6 +279,54 @@ export function RenderNodeView({
         </section>
       );
 
+    case "anchor": {
+      const label = str(props.label);
+      const teachGoal = str(props.teachGoal);
+      return (
+        <div
+          className={`rounded-md border-l-4 border-violet-500/70 bg-white/80 px-3 py-2 dark:bg-zinc-950/40 ${
+            compact ? "text-xs" : "text-sm"
+          }`}
+        >
+          <div className="mb-1">
+            <Drillable
+              label={label}
+              sourceKind="anchor"
+              onDrill={onDrill}
+              drilling={drilling}
+              as="span"
+              className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
+            >
+              {label}
+            </Drillable>
+            {teachGoal ? (
+              <p className="mt-0.5 text-[0.65rem] leading-snug text-zinc-500 dark:text-zinc-400">
+                {teachGoal}
+              </p>
+            ) : null}
+          </div>
+          {children.length > 0 ? (
+            <div className="flex flex-col gap-1.5">
+              {children.map((child, i) => (
+                <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
+              ))}
+            </div>
+          ) : null}
+        </div>
+      );
+    }
+
+    case "topicMap":
+      return (
+        <TopicMapView
+          nodes={topicMapNodes(props.nodes)}
+          edges={topicMapEdges(props.edges)}
+          compact={compact}
+          onDrill={onDrill}
+          drilling={drilling}
+        />
+      );
+
     case "table": {
       const headers = strArray(props.headers);
       const rows = tableRows(props.rows);
@@ -403,6 +504,167 @@ function SheetHeader({ props }: { props: Record<string, unknown> }) {
         </p>
       ) : null}
     </header>
+  );
+}
+
+type TopicMapViewProps = {
+  nodes: TopicMapNode[];
+  edges: TopicMapEdge[];
+  compact?: boolean;
+  onDrill?: (target: DrillTarget) => void;
+  drilling?: boolean;
+};
+
+function TopicMapView({
+  nodes,
+  edges,
+  compact = false,
+  onDrill,
+  drilling = false,
+}: TopicMapViewProps) {
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const groups = new Map<string, TopicMapNode[]>();
+  const ungrouped: TopicMapNode[] = [];
+
+  for (const node of nodes) {
+    if (node.group) {
+      const bucket = groups.get(node.group) ?? [];
+      bucket.push(node);
+      groups.set(node.group, bucket);
+    } else {
+      ungrouped.push(node);
+    }
+  }
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  return (
+    <div
+      className={`rounded-md border border-dashed border-zinc-300/80 bg-zinc-100/50 p-2 dark:border-zinc-700 dark:bg-zinc-900/30 ${
+        compact ? "text-[0.65rem]" : "text-xs"
+      }`}
+    >
+      <p className="mb-2 text-[0.6rem] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        Explore subtopics
+      </p>
+
+      {edges.length > 0 ? (
+        <div className="mb-2 space-y-1">
+          {edges.map((edge, i) => {
+            const fromNode = nodeById.get(edge.from);
+            const toNode = nodeById.get(edge.to);
+            if (!fromNode || !toNode) return null;
+            const relationLabel = edge.relation
+              ? RELATION_LABELS[edge.relation] ?? edge.relation
+              : "→";
+            return (
+              <div
+                key={`${edge.from}-${edge.to}-${i}`}
+                className="flex flex-wrap items-center gap-1 text-zinc-600 dark:text-zinc-400"
+              >
+                <SubtopicCard
+                  node={fromNode}
+                  onDrill={onDrill}
+                  drilling={drilling}
+                  inline
+                />
+                <span className="px-0.5 text-[0.6rem] text-zinc-400">{relationLabel}</span>
+                <SubtopicCard
+                  node={toNode}
+                  onDrill={onDrill}
+                  drilling={drilling}
+                  inline
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        {Array.from(groups.entries()).map(([groupName, groupNodes]) => (
+          <div
+            key={groupName}
+            className="min-w-[7rem] flex-1 rounded border border-zinc-200/80 bg-white/60 p-1.5 dark:border-zinc-700 dark:bg-zinc-950/30"
+          >
+            <p className="mb-1 text-[0.6rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              {groupName}
+            </p>
+            <div className="flex flex-col gap-1">
+              {groupNodes.map((node) => (
+                <SubtopicCard
+                  key={node.id}
+                  node={node}
+                  onDrill={onDrill}
+                  drilling={drilling}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {ungrouped.length > 0 ? (
+          <div className="flex min-w-[7rem] flex-1 flex-col gap-1">
+            {ungrouped.map((node) => (
+              <SubtopicCard
+                key={node.id}
+                node={node}
+                onDrill={onDrill}
+                drilling={drilling}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+type SubtopicCardProps = {
+  node: TopicMapNode;
+  onDrill?: (target: DrillTarget) => void;
+  drilling?: boolean;
+  inline?: boolean;
+};
+
+function SubtopicCard({
+  node,
+  onDrill,
+  drilling = false,
+  inline = false,
+}: SubtopicCardProps) {
+  const highlighted = node.highlighted;
+  return (
+    <div
+      className={[
+        "rounded border px-2 py-1",
+        highlighted
+          ? "border-violet-300/80 bg-violet-50/80 dark:border-violet-800 dark:bg-violet-950/30"
+          : "border-zinc-200/60 bg-white/70 dark:border-zinc-700 dark:bg-zinc-900/50",
+        inline ? "inline-flex flex-col" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <Drillable
+        label={node.label}
+        sourceKind="subtopic"
+        onDrill={onDrill}
+        drilling={drilling}
+        as="span"
+        className="font-medium text-zinc-800 dark:text-zinc-100"
+      >
+        {node.label}
+      </Drillable>
+      {node.hint ? (
+        <span className="text-[0.6rem] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+          {node.hint}
+        </span>
+      ) : null}
+    </div>
   );
 }
 

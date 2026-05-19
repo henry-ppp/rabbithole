@@ -14,14 +14,47 @@ export type RenderNode = {
   layout?: LayoutHint;
 };
 
+export type SubtopicEdge = {
+  from: string;
+  to: string;
+  relation?: "requires" | "leads-to" | "contrasts" | "part-of";
+};
+
+export type SubtopicNode = {
+  id: string;
+  label: string;
+  hint?: string;
+  group?: string;
+};
+
+export type AnchorKnowledge = {
+  id: string;
+  label: string;
+  teachGoal: string;
+  mustCover: string[];
+  linkedSubtopics?: string[];
+};
+
 export type CoverageSection = {
   id: string;
   title: string;
   goal: string;
-  mustInclude: string[];
+  /** Teach-now concepts (1–3 per section). */
+  anchors?: AnchorKnowledge[];
+  /** Bare navigational subtopics (4–8 per section). */
+  subtopics?: SubtopicNode[];
+  edges?: SubtopicEdge[];
+  /** Legacy dense mode when anchors/subtopics are absent. */
+  mustInclude?: string[];
   density?: "compact" | "normal";
   order?: number;
 };
+
+export function hasThreeLayerSection(section: CoverageSection): boolean {
+  return (
+    (section.anchors?.length ?? 0) > 0 || (section.subtopics?.length ?? 0) > 0
+  );
+}
 
 export type CoverageMap = {
   topic: string;
@@ -55,6 +88,10 @@ const MAX_STRING_LENGTH = 8_000;
 /** Safety ceiling only — not a planning guideline for the coverage planner. */
 export const MAX_COVERAGE_SECTIONS = 24;
 const MAX_MUST_INCLUDE_PER_SECTION = 16;
+const MAX_ANCHORS_PER_SECTION = 3;
+const MAX_SUBTOPICS_PER_SECTION = 8;
+const MAX_EDGES_PER_SECTION = 6;
+const MAX_MUST_COVER_PER_ANCHOR = 6;
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -217,14 +254,80 @@ export function shortSectionTitle(title: string, maxLen = 48): string {
   return `${base.slice(0, maxLen - 1)}…`;
 }
 
+function buildFallbackAnchorNode(anchor: AnchorKnowledge): RenderNode {
+  const items = anchor.mustCover
+    .filter((item) => item.trim())
+    .slice(0, MAX_MUST_COVER_PER_ANCHOR)
+    .map((item) => item.trim().slice(0, 160));
+
+  const children: RenderNode[] = [];
+  if (anchor.teachGoal.trim()) {
+    children.push({
+      kind: "text",
+      props: { content: anchor.teachGoal.trim().slice(0, 200) },
+    });
+  }
+  if (items.length > 0) {
+    children.push({
+      kind: "list",
+      props: { items },
+    });
+  }
+
+  return {
+    kind: "anchor",
+    props: {
+      id: anchor.id,
+      label: anchor.label.slice(0, 80),
+      teachGoal: anchor.teachGoal.slice(0, 200),
+    },
+    children,
+  };
+}
+
+function buildFallbackTopicMapNode(section: CoverageSection): RenderNode | null {
+  const linkedIds = new Set<string>();
+  for (const anchor of section.anchors ?? []) {
+    for (const id of anchor.linkedSubtopics ?? []) {
+      linkedIds.add(id);
+    }
+  }
+
+  const nodes = (section.subtopics ?? [])
+    .slice(0, MAX_SUBTOPICS_PER_SECTION)
+    .map((node) => ({
+      id: node.id,
+      label: node.label.slice(0, 80),
+      ...(node.hint ? { hint: node.hint.slice(0, 40) } : {}),
+      ...(node.group ? { group: node.group.slice(0, 40) } : {}),
+      ...(linkedIds.has(node.id) ? { highlighted: true } : {}),
+    }));
+
+  if (nodes.length === 0) {
+    return null;
+  }
+
+  const edges = (section.edges ?? [])
+    .slice(0, MAX_EDGES_PER_SECTION)
+    .map((edge) => ({
+      from: edge.from,
+      to: edge.to,
+      ...(edge.relation ? { relation: edge.relation } : {}),
+    }));
+
+  return {
+    kind: "topicMap",
+    props: {
+      layout: "cluster-flow",
+      nodes,
+      ...(edges.length > 0 ? { edges } : {}),
+    },
+  };
+}
+
 /** Deterministic section when the agent returns truncated or invalid JSON. */
 export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
   const title = shortSectionTitle(section.title);
-  const items = section.mustInclude
-    .filter((item) => typeof item === "string" && item.trim())
-    .slice(0, 16)
-    .map((item) => item.trim().slice(0, 160));
-
   const children: RenderNode[] = [];
 
   if (section.goal.trim()) {
@@ -233,6 +336,36 @@ export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
       props: { content: section.goal.trim().slice(0, 200) },
     });
   }
+
+  if (hasThreeLayerSection(section)) {
+    for (const anchor of (section.anchors ?? []).slice(0, MAX_ANCHORS_PER_SECTION)) {
+      children.push(buildFallbackAnchorNode(anchor));
+    }
+
+    const topicMap = buildFallbackTopicMapNode(section);
+    if (topicMap) {
+      children.push(topicMap);
+    }
+
+    if (children.length === 0) {
+      children.push({
+        kind: "text",
+        props: { content: "Content unavailable — regenerate this section." },
+      });
+    }
+
+    return {
+      kind: "section",
+      props: { title },
+      layout: { density: section.density ?? "compact" },
+      children,
+    };
+  }
+
+  const items = (section.mustInclude ?? [])
+    .filter((item) => typeof item === "string" && item.trim())
+    .slice(0, 16)
+    .map((item) => item.trim().slice(0, 160));
 
   if (items.length >= 6) {
     children.push({
@@ -361,6 +494,13 @@ export function countNodes(node: RenderNode): number {
   return count;
 }
 
+function sectionHasTopicMap(node: RenderNode): boolean {
+  if (node.kind === "topicMap") {
+    return true;
+  }
+  return (node.children ?? []).some((child) => sectionHasTopicMap(child));
+}
+
 /** Deterministic layout: avoids sending full section subtrees to a layout agent (truncation). */
 export function assembleCheatSheetTree(
   coverageMap: CoverageMap,
@@ -379,14 +519,21 @@ export function assembleCheatSheetTree(
       {
         kind: "grid",
         props: { columns },
-        children: sectionNodes.map((node, index) => ({
-          ...node,
-          layout: {
-            ...node.layout,
-            column: index % columns,
-            density: node.layout?.density ?? "compact",
-          },
-        })),
+        children: sectionNodes.map((node, index) => {
+          const span =
+            sectionHasTopicMap(node) && (node.children?.length ?? 0) >= 4
+              ? columns
+              : node.layout?.span;
+          return {
+            ...node,
+            layout: {
+              ...node.layout,
+              column: index % columns,
+              density: node.layout?.density ?? "compact",
+              ...(span !== undefined ? { span } : {}),
+            },
+          };
+        }),
       },
     ],
   };
@@ -401,6 +548,106 @@ export function validateRenderTree(node: RenderNode): {
     return { ok: false, error: `Tree exceeds max nodes (${MAX_NODES})` };
   }
   return { ok: true };
+}
+
+const VALID_EDGE_RELATIONS = new Set([
+  "requires",
+  "leads-to",
+  "contrasts",
+  "part-of",
+]);
+
+function parseAnchorKnowledgeList(raw: unknown): AnchorKnowledge[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const anchors: AnchorKnowledge[] = [];
+  for (const item of raw.slice(0, MAX_ANCHORS_PER_SECTION)) {
+    if (!isPlainObject(item)) continue;
+    if (
+      typeof item.id !== "string" ||
+      typeof item.label !== "string" ||
+      typeof item.teachGoal !== "string"
+    ) {
+      continue;
+    }
+
+    const mustCover = Array.isArray(item.mustCover)
+      ? item.mustCover
+          .filter((entry): entry is string => typeof entry === "string")
+          .slice(0, MAX_MUST_COVER_PER_ANCHOR)
+      : [];
+
+    const linkedSubtopics = Array.isArray(item.linkedSubtopics)
+      ? item.linkedSubtopics
+          .filter((entry): entry is string => typeof entry === "string")
+          .slice(0, 8)
+      : undefined;
+
+    anchors.push({
+      id: item.id,
+      label: item.label,
+      teachGoal: item.teachGoal,
+      mustCover,
+      ...(linkedSubtopics && linkedSubtopics.length > 0
+        ? { linkedSubtopics }
+        : {}),
+    });
+  }
+
+  return anchors;
+}
+
+function parseSubtopicNodeList(raw: unknown): SubtopicNode[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const nodes: SubtopicNode[] = [];
+  for (const item of raw.slice(0, MAX_SUBTOPICS_PER_SECTION)) {
+    if (!isPlainObject(item)) continue;
+    if (typeof item.id !== "string" || typeof item.label !== "string") {
+      continue;
+    }
+
+    nodes.push({
+      id: item.id,
+      label: item.label,
+      ...(typeof item.hint === "string" ? { hint: item.hint.slice(0, 40) } : {}),
+      ...(typeof item.group === "string" ? { group: item.group.slice(0, 40) } : {}),
+    });
+  }
+
+  return nodes;
+}
+
+function parseSubtopicEdgeList(raw: unknown): SubtopicEdge[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const edges: SubtopicEdge[] = [];
+  for (const item of raw.slice(0, MAX_EDGES_PER_SECTION)) {
+    if (!isPlainObject(item)) continue;
+    if (typeof item.from !== "string" || typeof item.to !== "string") {
+      continue;
+    }
+
+    const relation =
+      typeof item.relation === "string" &&
+      VALID_EDGE_RELATIONS.has(item.relation)
+        ? (item.relation as SubtopicEdge["relation"])
+        : undefined;
+
+    edges.push({
+      from: item.from,
+      to: item.to,
+      ...(relation ? { relation } : {}),
+    });
+  }
+
+  return edges;
 }
 
 export function parseCoverageMap(
@@ -432,17 +679,36 @@ export function parseCoverageMap(
           .filter((item): item is string => typeof item === "string")
           .slice(0, MAX_MUST_INCLUDE_PER_SECTION)
       : [];
-    sections.push({
+
+    const anchors = parseAnchorKnowledgeList(section.anchors);
+    const subtopics = parseSubtopicNodeList(section.subtopics);
+    const edges = parseSubtopicEdgeList(section.edges);
+
+    const parsed: CoverageSection = {
       id: section.id,
       title: section.title,
       goal: section.goal,
-      mustInclude,
       density:
         section.density === "compact" || section.density === "normal"
           ? section.density
           : undefined,
       order: typeof section.order === "number" ? section.order : undefined,
-    });
+    };
+
+    if (anchors.length > 0) {
+      parsed.anchors = anchors;
+    }
+    if (subtopics.length > 0) {
+      parsed.subtopics = subtopics;
+    }
+    if (edges.length > 0) {
+      parsed.edges = edges;
+    }
+    if (mustInclude.length > 0) {
+      parsed.mustInclude = mustInclude;
+    }
+
+    sections.push(parsed);
   }
 
   if (sections.length === 0) {
