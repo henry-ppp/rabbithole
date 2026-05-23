@@ -43,6 +43,26 @@ export const gitRebaseFixture: CheatSheetResponse = {
             { from: "conflicts", to: "recovery", relation: "leads-to" },
           ],
         },
+        {
+          id: "duration",
+          title: "Duration",
+          goal: "Price sensitivity to yield changes — first-order approximation.",
+          anchors: [
+            {
+              id: "mod-duration",
+              label: "Modified duration",
+              teachGoal: "Percent price change per 1% yield change.",
+              mustCover: [
+                "D_mod = D / (1+y)",
+                "Approximate ΔP/P ≈ -D_mod · Δy",
+              ],
+            },
+          ],
+          subtopics: [
+            { id: "macaulay", label: "Macaulay duration", group: "Foundation" },
+            { id: "convexity", label: "Convexity", hint: "Second order", group: "Risk" },
+          ],
+        },
       ],
     },
   },
@@ -52,7 +72,7 @@ export const gitRebaseFixture: CheatSheetResponse = {
     children: [
       {
         kind: "grid",
-        props: { columns: 1 },
+        props: { columns: 2 },
         children: [
           {
             kind: "section",
@@ -134,6 +154,72 @@ export const gitRebaseFixture: CheatSheetResponse = {
                   ],
                   edges: [
                     { from: "conflicts", to: "recovery", relation: "leads-to" },
+                  ],
+                },
+              },
+            ],
+          },
+          {
+            kind: "section",
+            props: { title: "Duration" },
+            layout: { column: 1, density: "compact" },
+            children: [
+              {
+                kind: "text",
+                props: {
+                  content:
+                    "Price sensitivity to yield changes — first-order approximation.",
+                },
+              },
+              {
+                kind: "anchor",
+                props: {
+                  id: "mod-duration",
+                  label: "Modified duration",
+                  teachGoal: "Percent price change per 1% yield change.",
+                },
+                children: [
+                  {
+                    kind: "math",
+                    props: {
+                      latex: "D_{\\mathrm{mod}} = \\frac{D}{1+y}",
+                      display: true,
+                    },
+                  },
+                  {
+                    kind: "text",
+                    props: {
+                      content:
+                        "Approximate price change: $$\\frac{\\Delta P}{P} \\approx -D_{\\mod} \\cdot \\Delta y$$",
+                    },
+                  },
+                  {
+                    kind: "list",
+                    props: {
+                      items: [
+                        "Macaulay $D = \\sum_t t \\cdot \\frac{PV(CF_t)}{P}$",
+                        "Higher $D$ → more rate sensitivity",
+                      ],
+                    },
+                  },
+                ],
+              },
+              {
+                kind: "topicMap",
+                props: {
+                  layout: "cluster-flow",
+                  nodes: [
+                    {
+                      id: "macaulay",
+                      label: "Macaulay duration",
+                      group: "Foundation",
+                    },
+                    {
+                      id: "convexity",
+                      label: "Convexity",
+                      hint: "Second order",
+                      group: "Risk",
+                    },
                   ],
                 },
               },

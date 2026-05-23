@@ -4,6 +4,7 @@ import type { MouseEvent, PointerEvent, ReactNode } from "react";
 import type { DrillSourceKind, DrillTarget } from "./navigation";
 import { codeDrillLabel, normalizeDrillLabel } from "./navigation";
 import type { RenderNode } from "./render-contract";
+import { MathSpan, RichText } from "./math-render";
 
 export type { DrillTarget };
 
@@ -26,6 +27,7 @@ const KNOWN_KINDS = new Set([
   "callout",
   "text",
   "list",
+  "math",
   "spacer",
 ]);
 
@@ -301,7 +303,7 @@ export function RenderNodeView({
             </Drillable>
             {teachGoal ? (
               <p className="mt-0.5 text-[0.65rem] leading-snug text-zinc-500 dark:text-zinc-400">
-                {teachGoal}
+                <RichText text={teachGoal} />
               </p>
             ) : null}
           </div>
@@ -360,7 +362,7 @@ export function RenderNodeView({
                 {row.map((cell, ci) => (
                   <td
                     key={ci}
-                    className="break-words border border-zinc-200 px-2 py-1 align-top font-mono text-[0.65rem] leading-snug dark:border-zinc-700"
+                    className="break-words border border-zinc-200 px-2 py-1 align-top text-[0.65rem] leading-snug dark:border-zinc-700"
                   >
                     <Drillable
                       label={cell}
@@ -369,7 +371,7 @@ export function RenderNodeView({
                       drilling={drilling}
                       as="span"
                     >
-                      {cell}
+                      <RichText text={cell} />
                     </Drillable>
                   </td>
                 ))}
@@ -436,7 +438,9 @@ export function RenderNodeView({
               drilling={drilling}
               className="block"
             >
-              <p>{content}</p>
+              <p>
+                <RichText text={content} />
+              </p>
             </Drillable>
           ) : null}
           {children.length > 0
@@ -453,8 +457,16 @@ export function RenderNodeView({
         <p
           className={`leading-snug text-zinc-700 dark:text-zinc-300 ${compact ? "text-xs" : "text-sm"}`}
         >
-          {str(props.content)}
+          <RichText text={str(props.content)} />
         </p>
+      );
+
+    case "math":
+      return (
+        <MathSpan
+          latex={str(props.latex)}
+          display={props.display !== false}
+        />
       );
 
     case "list": {
@@ -474,7 +486,7 @@ export function RenderNodeView({
                 drilling={drilling}
                 as="span"
               >
-                {item}
+                <RichText text={item} />
               </Drillable>
             </li>
           ))}

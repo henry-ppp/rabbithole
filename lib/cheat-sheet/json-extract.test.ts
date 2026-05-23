@@ -7,6 +7,7 @@ import {
   findBalancedJsonEnd,
   parseCoverageMap,
   parseSectionWriterOutput,
+  sanitizeRenderNode,
   shortSectionTitle,
 } from "./render-contract";
 
@@ -74,6 +75,17 @@ describe("parseCoverageMap", () => {
     assert.equal(section.anchors?.length, 1);
     assert.equal(section.subtopics?.length, 1);
     assert.equal(section.edges?.length, 1);
+  });
+});
+
+describe("sanitizeRenderNode", () => {
+  it("accepts math node kind", () => {
+    const node = sanitizeRenderNode({
+      kind: "math",
+      props: { latex: "x^2", display: true },
+    });
+    assert.equal(node?.kind, "math");
+    assert.equal(node?.props?.latex, "x^2");
   });
 });
 
