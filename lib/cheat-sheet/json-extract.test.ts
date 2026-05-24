@@ -5,6 +5,7 @@ import {
   buildFallbackSectionNode,
   extractJsonFromAgentText,
   findBalancedJsonEnd,
+  MAX_SECTIONS_PER_SHEET,
   parseCoverageMap,
   parseSectionWriterOutput,
   sanitizeRenderNode,
@@ -45,14 +46,14 @@ describe("shortSectionTitle", () => {
 });
 
 describe("parseCoverageMap", () => {
-  it("parses three-layer section with anchors and subtopics", () => {
+  it("parses single-section coverage with anchors and modules", () => {
     const parsed = parseCoverageMap({
       topic: "Git rebase",
       title: "Git Rebase",
       sections: [
         {
-          id: "basics",
-          title: "Basics",
+          id: "main",
+          title: "Git rebase",
           goal: "Core rebase workflow",
           anchors: [
             {
@@ -62,19 +63,50 @@ describe("parseCoverageMap", () => {
               mustCover: ["git rebase main"],
             },
           ],
-          subtopics: [
-            { id: "s1", label: "Recovery", group: "Advanced", hint: "Undo" },
+          modules: [
+            { id: "m1", label: "Everyday workflow", group: "Core", hint: "Start here" },
           ],
-          edges: [{ from: "s1", to: "s2", relation: "leads-to" }],
+          edges: [{ from: "m1", to: "m2", relation: "leads-to" }],
         },
       ],
     });
 
     assert.ok(parsed);
     const section = parsed!.map.sections[0];
+    assert.equal(parsed!.map.sections.length, 1);
     assert.equal(section.anchors?.length, 1);
-    assert.equal(section.subtopics?.length, 1);
+    assert.equal(section.modules?.length, 1);
     assert.equal(section.edges?.length, 1);
+  });
+
+  it("accepts legacy subtopics as modules", () => {
+    const parsed = parseCoverageMap({
+      topic: "Git",
+      title: "Git",
+      sections: [
+        {
+          id: "main",
+          title: "Git",
+          goal: "Goal",
+          subtopics: [{ id: "m1", label: "Basics" }],
+        },
+      ],
+    });
+    assert.equal(parsed!.map.sections[0].modules?.length, 1);
+  });
+
+  it("truncates to one section when planner returns multiple", () => {
+    const parsed = parseCoverageMap({
+      topic: "Git",
+      title: "Git",
+      sections: [
+        { id: "a", title: "A", goal: "A" },
+        { id: "b", title: "B", goal: "B" },
+      ],
+    });
+    assert.equal(parsed!.map.sections.length, 1);
+    assert.equal(parsed!.sectionsTruncated, true);
+    assert.equal(MAX_SECTIONS_PER_SHEET, 1);
   });
 });
 
@@ -87,13 +119,21 @@ describe("sanitizeRenderNode", () => {
     assert.equal(node?.kind, "math");
     assert.equal(node?.props?.latex, "x^2");
   });
+
+  it("accepts moduleMap node kind", () => {
+    const node = sanitizeRenderNode({
+      kind: "moduleMap",
+      props: { nodes: [{ id: "m1", label: "Basics" }] },
+    });
+    assert.equal(node?.kind, "moduleMap");
+  });
 });
 
 describe("buildFallbackSectionNode", () => {
-  it("builds three-layer section from anchors and subtopics", () => {
+  it("builds three-layer section from anchors and modules", () => {
     const node = buildFallbackSectionNode({
-      id: "basics",
-      title: "Basics",
+      id: "main",
+      title: "Git rebase",
       goal: "Core rebase workflow",
       anchors: [
         {
@@ -103,21 +143,21 @@ describe("buildFallbackSectionNode", () => {
           mustCover: ["git rebase main", "git fetch first"],
         },
       ],
-      subtopics: [
-        { id: "s1", label: "Recovery", group: "Advanced" },
-        { id: "s2", label: "Rebase --onto", group: "Advanced" },
+      modules: [
+        { id: "m1", label: "Everyday workflow", group: "Core" },
+        { id: "m2", label: "Recovery", group: "Recovery" },
       ],
     });
 
     assert.equal(node.kind, "section");
-    assert.equal(node.props?.title, "Basics");
+    assert.equal(node.props?.title, "Git rebase");
     const kinds = (node.children ?? []).map((child) => child.kind);
     assert.ok(kinds.includes("text"));
     assert.ok(kinds.includes("anchor"));
-    assert.ok(kinds.includes("topicMap"));
+    assert.ok(kinds.includes("moduleMap"));
   });
 
-  it("builds legacy section from mustInclude when no anchors/subtopics", () => {
+  it("builds legacy section from mustInclude when no anchors/modules", () => {
     const node = buildFallbackSectionNode({
       id: "fi",
       title: "Fixed Income (term structure)",
@@ -127,7 +167,7 @@ describe("buildFallbackSectionNode", () => {
     assert.equal(node.kind, "section");
     assert.equal(node.props?.title, "Fixed Income");
     assert.ok((node.children?.length ?? 0) >= 1);
-    assert.equal(node.children?.some((c) => c.kind === "topicMap"), false);
+    assert.equal(node.children?.some((c) => c.kind === "moduleMap"), false);
   });
 });
 
@@ -156,7 +196,7 @@ describe("parseSectionWriterOutput", () => {
     assert.equal(node?.children?.length, 1);
   });
 
-  it("parses three-layer section with anchor and topicMap", () => {
+  it("parses three-layer section with anchor and moduleMap", () => {
     const node = parseSectionWriterOutput(
       {
         kind: "section",
@@ -169,9 +209,9 @@ describe("parseSectionWriterOutput", () => {
             children: [{ kind: "list", props: { items: ["a"] } }],
           },
           {
-            kind: "topicMap",
+            kind: "moduleMap",
             props: {
-              nodes: [{ id: "s1", label: "Subtopic", group: "G" }],
+              nodes: [{ id: "m1", label: "Module", group: "G" }],
             },
           },
         ],
@@ -181,7 +221,7 @@ describe("parseSectionWriterOutput", () => {
     assert.equal(node?.kind, "section");
     assert.equal(node?.children?.length, 3);
     assert.equal(node?.children?.[1]?.kind, "anchor");
-    assert.equal(node?.children?.[2]?.kind, "topicMap");
+    assert.equal(node?.children?.[2]?.kind, "moduleMap");
   });
 
   it("infers section when kind is missing but children exist", () => {
@@ -197,37 +237,36 @@ describe("parseSectionWriterOutput", () => {
 });
 
 describe("assembleCheatSheetTree", () => {
-  it("wraps sections in a grid sheet", () => {
+  it("wraps a single section in a one-column grid", () => {
     const tree = assembleCheatSheetTree(
-      { topic: "cfa", title: "CFA L2", sections: [] },
-      [
-        { kind: "section", props: { title: "A" } },
-        { kind: "section", props: { title: "B" } },
-      ],
+      { topic: "git", title: "Git Rebase", sections: [] },
+      [{ kind: "section", props: { title: "Git rebase" } }],
     );
     assert.equal(tree.kind, "sheet");
     assert.equal(tree.children?.[0]?.kind, "grid");
-    assert.equal(tree.children?.[0]?.children?.length, 2);
+    assert.equal(tree.children?.[0]?.props?.columns, 1);
+    assert.equal(tree.children?.[0]?.children?.length, 1);
   });
 
-  it("spans full width for sections with large topicMaps", () => {
+  it("hides redundant section title when it matches sheet title", () => {
+    const tree = assembleCheatSheetTree(
+      { topic: "git rebase", title: "Git Rebase — Quick Reference", sections: [] },
+      [{ kind: "section", props: { title: "Git Rebase — Quick Reference" } }],
+    );
+    const section = tree.children?.[0]?.children?.[0];
+    assert.equal(section?.props?.hideTitle, true);
+  });
+
+  it("uses only the first section when multiple nodes are passed", () => {
     const tree = assembleCheatSheetTree(
       { topic: "git", title: "Git", sections: [] },
       [
-        {
-          kind: "section",
-          props: { title: "Basics" },
-          children: [
-            { kind: "text", props: { content: "Goal" } },
-            { kind: "anchor", props: { label: "A" }, children: [] },
-            { kind: "anchor", props: { label: "B" }, children: [] },
-            { kind: "topicMap", props: { nodes: [{ id: "s1", label: "S" }] } },
-          ],
-        },
+        { kind: "section", props: { title: "First" } },
+        { kind: "section", props: { title: "Second" } },
       ],
     );
-    const section = tree.children?.[0]?.children?.[0];
-    assert.equal(section?.layout?.span, 1);
+    assert.equal(tree.children?.[0]?.children?.length, 1);
+    assert.equal(tree.children?.[0]?.children?.[0]?.props?.title, "First");
   });
 });
 

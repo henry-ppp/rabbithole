@@ -10,9 +10,9 @@ export const gitRebaseFixture: CheatSheetResponse = {
       title: "Git Rebase — Quick Reference",
       sections: [
         {
-          id: "basics",
-          title: "Basics",
-          goal: "Replay commits onto a new base — everyday workflow and interactive editing.",
+          id: "main",
+          title: "Git rebase",
+          goal: "Replay commits onto a new base — rewrite history locally while keeping a linear story.",
           anchors: [
             {
               id: "what-rebase",
@@ -22,45 +22,26 @@ export const gitRebaseFixture: CheatSheetResponse = {
                 "git rebase main — replay onto main",
                 "git fetch origin && git rebase origin/main",
               ],
-              linkedSubtopics: ["onto"],
+              linkedModules: ["everyday"],
             },
             {
-              id: "interactive",
-              label: "Interactive rebase",
-              teachGoal: "Edit, reorder, squash, or drop commits in a todo list.",
+              id: "vs-merge",
+              label: "Rebase vs merge",
+              teachGoal: "Rebase linearizes history; merge preserves branch topology with a merge commit.",
               mustCover: [
-                "git rebase -i HEAD~3",
-                "pick / squash / fixup / drop actions",
+                "Rebase: replay commits, new SHAs",
+                "Merge: join tips, keeps parallel history",
               ],
             },
           ],
-          subtopics: [
-            { id: "onto", label: "Rebase --onto", hint: "Transplant", group: "Advanced" },
-            { id: "conflicts", label: "Conflict resolution", group: "Recovery" },
-            { id: "recovery", label: "Abort & reflog", hint: "Undo", group: "Recovery" },
+          modules: [
+            { id: "everyday", label: "Everyday workflow", group: "Core" },
+            { id: "interactive", label: "Interactive rebase", group: "Core" },
+            { id: "recovery", label: "Recovery & conflicts", hint: "When things break", group: "Recovery" },
+            { id: "advanced", label: "Rebase --onto", hint: "Transplant", group: "Advanced" },
           ],
           edges: [
-            { from: "conflicts", to: "recovery", relation: "leads-to" },
-          ],
-        },
-        {
-          id: "duration",
-          title: "Duration",
-          goal: "Price sensitivity to yield changes — first-order approximation.",
-          anchors: [
-            {
-              id: "mod-duration",
-              label: "Modified duration",
-              teachGoal: "Percent price change per 1% yield change.",
-              mustCover: [
-                "D_mod = D / (1+y)",
-                "Approximate ΔP/P ≈ -D_mod · Δy",
-              ],
-            },
-          ],
-          subtopics: [
-            { id: "macaulay", label: "Macaulay duration", group: "Foundation" },
-            { id: "convexity", label: "Convexity", hint: "Second order", group: "Risk" },
+            { from: "recovery", to: "advanced", relation: "leads-to" },
           ],
         },
       ],
@@ -72,18 +53,18 @@ export const gitRebaseFixture: CheatSheetResponse = {
     children: [
       {
         kind: "grid",
-        props: { columns: 2 },
+        props: { columns: 1 },
         children: [
           {
             kind: "section",
-            props: { title: "Basics" },
+            props: { title: "Git rebase", hideTitle: true },
             layout: { column: 0, density: "compact", span: 1 },
             children: [
               {
                 kind: "text",
                 props: {
                   content:
-                    "Replay commits onto a new base — everyday workflow and interactive editing.",
+                    "Replay commits onto a new base — rewrite history locally while keeping a linear story.",
                 },
               },
               {
@@ -110,116 +91,54 @@ export const gitRebaseFixture: CheatSheetResponse = {
               {
                 kind: "anchor",
                 props: {
-                  id: "interactive",
-                  label: "Interactive rebase",
-                  teachGoal: "Edit, reorder, squash, or drop commits in a todo list.",
+                  id: "vs-merge",
+                  label: "Rebase vs merge",
+                  teachGoal:
+                    "Rebase linearizes history; merge preserves branch topology with a merge commit.",
                 },
                 children: [
-                  {
-                    kind: "table",
-                    props: {
-                      headers: ["Action", "Effect"],
-                      rows: [
-                        ["pick", "Keep commit as-is"],
-                        ["squash", "Melds into previous"],
-                        ["fixup", "Squash, drop message"],
-                        ["drop", "Remove commit"],
-                      ],
-                    },
-                  },
-                ],
-              },
-              {
-                kind: "topicMap",
-                props: {
-                  layout: "cluster-flow",
-                  nodes: [
-                    {
-                      id: "onto",
-                      label: "Rebase --onto",
-                      hint: "Transplant",
-                      group: "Advanced",
-                    },
-                    {
-                      id: "conflicts",
-                      label: "Conflict resolution",
-                      group: "Recovery",
-                    },
-                    {
-                      id: "recovery",
-                      label: "Abort & reflog",
-                      hint: "Undo",
-                      group: "Recovery",
-                    },
-                  ],
-                  edges: [
-                    { from: "conflicts", to: "recovery", relation: "leads-to" },
-                  ],
-                },
-              },
-            ],
-          },
-          {
-            kind: "section",
-            props: { title: "Duration" },
-            layout: { column: 1, density: "compact" },
-            children: [
-              {
-                kind: "text",
-                props: {
-                  content:
-                    "Price sensitivity to yield changes — first-order approximation.",
-                },
-              },
-              {
-                kind: "anchor",
-                props: {
-                  id: "mod-duration",
-                  label: "Modified duration",
-                  teachGoal: "Percent price change per 1% yield change.",
-                },
-                children: [
-                  {
-                    kind: "math",
-                    props: {
-                      latex: "D_{\\mathrm{mod}} = \\frac{D}{1+y}",
-                      display: true,
-                    },
-                  },
-                  {
-                    kind: "text",
-                    props: {
-                      content:
-                        "Approximate price change: $$\\frac{\\Delta P}{P} \\approx -D_{\\mod} \\cdot \\Delta y$$",
-                    },
-                  },
                   {
                     kind: "list",
                     props: {
                       items: [
-                        "Macaulay $D = \\sum_t t \\cdot \\frac{PV(CF_t)}{P}$",
-                        "Higher $D$ → more rate sensitivity",
+                        "Rebase: replay commits, new SHAs",
+                        "Merge: join tips, keeps parallel history",
                       ],
                     },
                   },
                 ],
               },
               {
-                kind: "topicMap",
+                kind: "moduleMap",
                 props: {
                   layout: "cluster-flow",
                   nodes: [
                     {
-                      id: "macaulay",
-                      label: "Macaulay duration",
-                      group: "Foundation",
+                      id: "everyday",
+                      label: "Everyday workflow",
+                      group: "Core",
+                      highlighted: true,
                     },
                     {
-                      id: "convexity",
-                      label: "Convexity",
-                      hint: "Second order",
-                      group: "Risk",
+                      id: "interactive",
+                      label: "Interactive rebase",
+                      group: "Core",
                     },
+                    {
+                      id: "recovery",
+                      label: "Recovery & conflicts",
+                      hint: "When things break",
+                      group: "Recovery",
+                    },
+                    {
+                      id: "advanced",
+                      label: "Rebase --onto",
+                      hint: "Transplant",
+                      group: "Advanced",
+                    },
+                  ],
+                  edges: [
+                    { from: "recovery", to: "advanced", relation: "leads-to" },
                   ],
                 },
               },

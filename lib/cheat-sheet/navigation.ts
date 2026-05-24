@@ -7,7 +7,7 @@ export const MAX_DRILL_LABEL_LENGTH = 120;
 export type DrillSourceKind =
   | "section"
   | "anchor"
-  | "subtopic"
+  | "module"
   | "callout"
   | "table"
   | "list"

@@ -31,27 +31,27 @@ const WRITER_CONCURRENCY = 2;
 
 const JSON_RETRY_SUFFIX = `
 
-IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. Keep anchors to 1–3 per section and subtopics to 4–8 so the JSON fits in one response.`;
+IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. The coverage map must have exactly one section with 1–3 anchors and 3–5 modules.`;
 
 const SECTION_WRITER_RETRY_SUFFIX = `
 
 IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE compact three-layer section subtree:
-- Max 6 children: one text (goal), up to 2 anchor nodes, one topicMap.
+- Max 6 children: one text (goal), up to 2 anchor nodes, one moduleMap.
 - Each anchor: label + teachGoal props, one list or table child covering mustCover.
-- topicMap: nodes from subtopics only, no explanatory text in hints.
+- moduleMap: nodes from modules only, no explanatory text in hints.
 - Keep strings under 120 characters; valid JSON only.`;
 
 const SECTION_WRITER_RETRY_SUFFIX_STRICT = `
 
 CRITICAL: JSON must be under 3000 characters total. Smallest valid three-layer section:
-- text (goal) + one anchor (list child) + topicMap (nodes array only).
+- text (goal) + one anchor (list child) + moduleMap (nodes array only).
 - No code blocks. props.title: short label only.
 - Valid JSON only.`;
 
 const SECTION_WRITER_TEMPLATE_SUFFIX = `
 
 Return ONLY this JSON shape (fill in; stay under 2500 characters total):
-{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"anchor","props":{"id":"a1","label":"ANCHOR_LABEL","teachGoal":"TEACH_GOAL"},"children":[{"kind":"list","props":{"items":["item1","item2"]}}]},{"kind":"topicMap","props":{"layout":"cluster-flow","nodes":[{"id":"s1","label":"Subtopic","group":"Group"}]}}]}`;
+{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"anchor","props":{"id":"a1","label":"ANCHOR_LABEL","teachGoal":"TEACH_GOAL"},"children":[{"kind":"list","props":{"items":["item1","item2"]}}]},{"kind":"moduleMap","props":{"layout":"cluster-flow","nodes":[{"id":"m1","label":"Module name","group":"Group"}]}}]}`;
 
 function getApiKey(): string {
   const key = process.env.CURSOR_API_KEY;
@@ -181,12 +181,12 @@ function sectionPayloadForWriter(section: CoverageSection): CoverageSection {
     }));
   }
 
-  if (section.subtopics) {
-    payload.subtopics = section.subtopics.slice(0, 8);
+  if (section.modules) {
+    payload.modules = section.modules.slice(0, 5);
   }
 
   if (section.edges) {
-    payload.edges = section.edges.slice(0, 6);
+    payload.edges = section.edges.slice(0, 4);
   }
 
   if (section.mustInclude) {
@@ -288,8 +288,8 @@ export async function generateCheatSheet(
 
   const parentContext = options.parentContext?.trim().slice(0, 500);
   const parentLine = parentContext
-    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the subtopic below; select 1–3 anchors to teach at this drill level and defer the rest to subtopic structure. Do not repeat the entire parent survey unless needed for coherence.\n`
-    : "\nAt this root level, select 1–3 anchors per section to teach now; defer remaining coverage to subtopic structure.\n";
+    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the module topic below; select 1–3 anchors to teach at this drill level and split remaining coverage into 3–5 MECE modules. Do not repeat the entire parent survey unless needed for coherence.\n`
+    : "\nAt this root level, produce exactly one section. Select 1–3 anchors to teach now; split the topic into 3–5 MECE modules for drill navigation.\n";
 
   const plannerPrompt = `${coveragePlaybook}
 
@@ -328,7 +328,7 @@ Topic: ${coverageMap.topic}
 Sheet title: ${coverageMap.title}
 
 Write one RenderNode subtree for the section below. Return only that subtree JSON (no markdown fences, not an array).
-${threeLayer ? "Use the three-layer anatomy: text (goal) + anchor nodes (teach mustCover) + topicMap (bare subtopics)." : "Legacy section: use text + list/table from mustInclude."}
+${threeLayer ? "Use the three-layer anatomy: text (goal) + anchor nodes (teach mustCover) + moduleMap (bare MECE modules)." : "Legacy section: use text + list/table from mustInclude."}
 Keep the subtree compact (max 6 children, short strings) so the JSON is complete in one response.
 
 Section:

@@ -14,13 +14,13 @@ export type RenderNode = {
   layout?: LayoutHint;
 };
 
-export type SubtopicEdge = {
+export type ModuleEdge = {
   from: string;
   to: string;
   relation?: "requires" | "leads-to" | "contrasts" | "part-of";
 };
 
-export type SubtopicNode = {
+export type ModuleNode = {
   id: string;
   label: string;
   hint?: string;
@@ -32,7 +32,7 @@ export type AnchorKnowledge = {
   label: string;
   teachGoal: string;
   mustCover: string[];
-  linkedSubtopics?: string[];
+  linkedModules?: string[];
 };
 
 export type CoverageSection = {
@@ -41,18 +41,23 @@ export type CoverageSection = {
   goal: string;
   /** Teach-now concepts (1–3 per section). */
   anchors?: AnchorKnowledge[];
-  /** Bare navigational subtopics (4–8 per section). */
-  subtopics?: SubtopicNode[];
-  edges?: SubtopicEdge[];
-  /** Legacy dense mode when anchors/subtopics are absent. */
+  /** MECE drill modules (3–5 per sheet). */
+  modules?: ModuleNode[];
+  edges?: ModuleEdge[];
+  /** Legacy dense mode when anchors/modules are absent. */
   mustInclude?: string[];
   density?: "compact" | "normal";
   order?: number;
 };
 
+/** @deprecated Use ModuleEdge */
+export type SubtopicEdge = ModuleEdge;
+/** @deprecated Use ModuleNode */
+export type SubtopicNode = ModuleNode;
+
 export function hasThreeLayerSection(section: CoverageSection): boolean {
   return (
-    (section.anchors?.length ?? 0) > 0 || (section.subtopics?.length ?? 0) > 0
+    (section.anchors?.length ?? 0) > 0 || (section.modules?.length ?? 0) > 0
   );
 }
 
@@ -85,12 +90,13 @@ export type CheatSheetResponse = {
 const MAX_DEPTH = 12;
 const MAX_NODES = 500;
 const MAX_STRING_LENGTH = 8_000;
-/** Safety ceiling only — not a planning guideline for the coverage planner. */
+/** Planner guideline: one section per sheet. */
+export const MAX_SECTIONS_PER_SHEET = 1;
 export const MAX_COVERAGE_SECTIONS = 24;
 const MAX_MUST_INCLUDE_PER_SECTION = 16;
 const MAX_ANCHORS_PER_SECTION = 3;
-const MAX_SUBTOPICS_PER_SECTION = 8;
-const MAX_EDGES_PER_SECTION = 6;
+const MAX_MODULES_PER_SECTION = 5;
+const MAX_EDGES_PER_SECTION = 4;
 const MAX_MUST_COVER_PER_ANCHOR = 6;
 
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -285,16 +291,16 @@ function buildFallbackAnchorNode(anchor: AnchorKnowledge): RenderNode {
   };
 }
 
-function buildFallbackTopicMapNode(section: CoverageSection): RenderNode | null {
+function buildFallbackModuleMapNode(section: CoverageSection): RenderNode | null {
   const linkedIds = new Set<string>();
   for (const anchor of section.anchors ?? []) {
-    for (const id of anchor.linkedSubtopics ?? []) {
+    for (const id of anchor.linkedModules ?? []) {
       linkedIds.add(id);
     }
   }
 
-  const nodes = (section.subtopics ?? [])
-    .slice(0, MAX_SUBTOPICS_PER_SECTION)
+  const nodes = (section.modules ?? [])
+    .slice(0, MAX_MODULES_PER_SECTION)
     .map((node) => ({
       id: node.id,
       label: node.label.slice(0, 80),
@@ -316,7 +322,7 @@ function buildFallbackTopicMapNode(section: CoverageSection): RenderNode | null 
     }));
 
   return {
-    kind: "topicMap",
+    kind: "moduleMap",
     props: {
       layout: "cluster-flow",
       nodes,
@@ -342,9 +348,9 @@ export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
       children.push(buildFallbackAnchorNode(anchor));
     }
 
-    const topicMap = buildFallbackTopicMapNode(section);
-    if (topicMap) {
-      children.push(topicMap);
+    const moduleMap = buildFallbackModuleMapNode(section);
+    if (moduleMap) {
+      children.push(moduleMap);
     }
 
     if (children.length === 0) {
@@ -494,20 +500,52 @@ export function countNodes(node: RenderNode): number {
   return count;
 }
 
-function sectionHasTopicMap(node: RenderNode): boolean {
-  if (node.kind === "topicMap") {
+function sectionHasModuleMap(node: RenderNode): boolean {
+  if (node.kind === "moduleMap" || node.kind === "topicMap") {
     return true;
   }
-  return (node.children ?? []).some((child) => sectionHasTopicMap(child));
+  return (node.children ?? []).some((child) => sectionHasModuleMap(child));
 }
 
-/** Deterministic layout: avoids sending full section subtrees to a layout agent (truncation). */
+function titlesMatch(a: string, b: string): boolean {
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** Deterministic layout: one full-width section per sheet. */
 export function assembleCheatSheetTree(
   coverageMap: CoverageMap,
   sectionNodes: RenderNode[],
 ): RenderNode {
-  const count = sectionNodes.length;
-  const columns = count >= 8 ? 3 : count >= 3 ? 3 : count >= 2 ? 2 : 1;
+  const primarySection = sectionNodes[0];
+  if (!primarySection) {
+    return {
+      kind: "sheet",
+      props: {
+        title: coverageMap.title,
+        subtitle: coverageMap.topic,
+      },
+      children: [],
+    };
+  }
+
+  const sectionTitle = String(primarySection.props?.title ?? "");
+  const hideTitle =
+    titlesMatch(sectionTitle, coverageMap.title) ||
+    titlesMatch(sectionTitle, coverageMap.topic);
+
+  const sectionNode: RenderNode = {
+    ...primarySection,
+    props: {
+      ...primarySection.props,
+      ...(hideTitle ? { hideTitle: true } : {}),
+    },
+    layout: {
+      ...primarySection.layout,
+      column: 0,
+      span: 1,
+      density: primarySection.layout?.density ?? "compact",
+    },
+  };
 
   return {
     kind: "sheet",
@@ -518,22 +556,8 @@ export function assembleCheatSheetTree(
     children: [
       {
         kind: "grid",
-        props: { columns },
-        children: sectionNodes.map((node, index) => {
-          const span =
-            sectionHasTopicMap(node) && (node.children?.length ?? 0) >= 4
-              ? columns
-              : node.layout?.span;
-          return {
-            ...node,
-            layout: {
-              ...node.layout,
-              column: index % columns,
-              density: node.layout?.density ?? "compact",
-              ...(span !== undefined ? { span } : {}),
-            },
-          };
-        }),
+        props: { columns: 1 },
+        children: [sectionNode],
       },
     ],
   };
@@ -579,19 +603,23 @@ function parseAnchorKnowledgeList(raw: unknown): AnchorKnowledge[] {
           .slice(0, MAX_MUST_COVER_PER_ANCHOR)
       : [];
 
-    const linkedSubtopics = Array.isArray(item.linkedSubtopics)
-      ? item.linkedSubtopics
+    const linkedModules = Array.isArray(item.linkedModules)
+      ? item.linkedModules
           .filter((entry): entry is string => typeof entry === "string")
           .slice(0, 8)
-      : undefined;
+      : Array.isArray(item.linkedSubtopics)
+        ? item.linkedSubtopics
+            .filter((entry): entry is string => typeof entry === "string")
+            .slice(0, 8)
+        : undefined;
 
     anchors.push({
       id: item.id,
       label: item.label,
       teachGoal: item.teachGoal,
       mustCover,
-      ...(linkedSubtopics && linkedSubtopics.length > 0
-        ? { linkedSubtopics }
+      ...(linkedModules && linkedModules.length > 0
+        ? { linkedModules }
         : {}),
     });
   }
@@ -599,13 +627,18 @@ function parseAnchorKnowledgeList(raw: unknown): AnchorKnowledge[] {
   return anchors;
 }
 
-function parseSubtopicNodeList(raw: unknown): SubtopicNode[] {
-  if (!Array.isArray(raw)) {
+function parseModuleNodeList(raw: unknown, legacyRaw?: unknown): ModuleNode[] {
+  const source = Array.isArray(raw)
+    ? raw
+    : Array.isArray(legacyRaw)
+      ? legacyRaw
+      : null;
+  if (!source) {
     return [];
   }
 
-  const nodes: SubtopicNode[] = [];
-  for (const item of raw.slice(0, MAX_SUBTOPICS_PER_SECTION)) {
+  const nodes: ModuleNode[] = [];
+  for (const item of source.slice(0, MAX_MODULES_PER_SECTION)) {
     if (!isPlainObject(item)) continue;
     if (typeof item.id !== "string" || typeof item.label !== "string") {
       continue;
@@ -622,12 +655,12 @@ function parseSubtopicNodeList(raw: unknown): SubtopicNode[] {
   return nodes;
 }
 
-function parseSubtopicEdgeList(raw: unknown): SubtopicEdge[] {
+function parseModuleEdgeList(raw: unknown): ModuleEdge[] {
   if (!Array.isArray(raw)) {
     return [];
   }
 
-  const edges: SubtopicEdge[] = [];
+  const edges: ModuleEdge[] = [];
   for (const item of raw.slice(0, MAX_EDGES_PER_SECTION)) {
     if (!isPlainObject(item)) continue;
     if (typeof item.from !== "string" || typeof item.to !== "string") {
@@ -637,7 +670,7 @@ function parseSubtopicEdgeList(raw: unknown): SubtopicEdge[] {
     const relation =
       typeof item.relation === "string" &&
       VALID_EDGE_RELATIONS.has(item.relation)
-        ? (item.relation as SubtopicEdge["relation"])
+        ? (item.relation as ModuleEdge["relation"])
         : undefined;
 
     edges.push({
@@ -663,9 +696,11 @@ export function parseCoverageMap(
     return null;
   }
 
-  const sectionsTruncated = raw.sections.length > MAX_COVERAGE_SECTIONS;
+  const sectionsTruncated =
+    raw.sections.length > MAX_SECTIONS_PER_SHEET ||
+    raw.sections.length > MAX_COVERAGE_SECTIONS;
   const sections: CoverageSection[] = [];
-  for (const section of raw.sections.slice(0, MAX_COVERAGE_SECTIONS)) {
+  for (const section of raw.sections.slice(0, MAX_SECTIONS_PER_SHEET)) {
     if (!isPlainObject(section)) continue;
     if (
       typeof section.id !== "string" ||
@@ -681,8 +716,8 @@ export function parseCoverageMap(
       : [];
 
     const anchors = parseAnchorKnowledgeList(section.anchors);
-    const subtopics = parseSubtopicNodeList(section.subtopics);
-    const edges = parseSubtopicEdgeList(section.edges);
+    const modules = parseModuleNodeList(section.modules, section.subtopics);
+    const edges = parseModuleEdgeList(section.edges);
 
     const parsed: CoverageSection = {
       id: section.id,
@@ -698,8 +733,8 @@ export function parseCoverageMap(
     if (anchors.length > 0) {
       parsed.anchors = anchors;
     }
-    if (subtopics.length > 0) {
-      parsed.subtopics = subtopics;
+    if (modules.length > 0) {
+      parsed.modules = modules;
     }
     if (edges.length > 0) {
       parsed.edges = edges;

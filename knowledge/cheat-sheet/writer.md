@@ -1,11 +1,12 @@
 # Section writer playbook
 
-You are a **section writer** for a technical cheat sheet fragment. You emit a three-layer section.
+You are a **section writer** for a technical cheat sheet. You emit one three-layer section for the current topic.
 
 ## Goals
 
-- Render **section knowledge** (framing), **anchor knowledge** (teach-now concepts with sufficient detail), and **subtopic structure** (bare navigational map).
+- Render **section knowledge** (framing), **anchor knowledge** (teach-now concepts with sufficient detail), and **module structure** (bare MECE drill map).
 - Emit a single **RenderNode** subtree (JSON only, no markdown fences) with `"kind": "section"` at the root.
+- **One section per sheet** — the assembler places it full-width.
 
 ## Section anatomy (max 6 children)
 
@@ -26,7 +27,7 @@ You are a **section writer** for a technical cheat sheet fragment. You emit a th
       ]
     },
     {
-      "kind": "topicMap",
+      "kind": "moduleMap",
       "props": {
         "layout": "cluster-flow",
         "nodes": [{ "id": "...", "label": "...", "hint": "...", "group": "..." }],
@@ -52,23 +53,21 @@ You are a **section writer** for a technical cheat sheet fragment. You emit a th
 
 - **Standalone equations**: use a `math` node inside an anchor:
   `{ "kind": "math", "props": { "latex": "YTM \\approx \\frac{C + \\frac{F-P}{n}}{\\frac{F+P}{2}}", "display": true } }`
-- **Inline math** in `text`, `list` items, or table cells: wrap LaTeX in `$...$` (e.g. `"Duration $D \\approx -\\frac{1}{P}\\frac{dP}{dy}$"`).
+- **Inline math** in `text`, `list` items, or table cells: wrap LaTeX in `$...$`.
 - **Display math inline**: use `$$...$$` within a string for a centered block.
-- Use standard LaTeX: `\frac{a}{b}`, `\sum`, `\Delta`, subscripts `P_0`, `\approx`.
 - Escape backslashes in JSON (`\\frac`). Do not use HTML.
 
-### Subtopic structure
-- One `topicMap` node matching planner `subtopics` exactly.
+### Module structure
+- One `moduleMap` node matching planner `modules` exactly (3–5 nodes).
 - **No explanatory content** in the map — only labels, structural hints, groups, and edges.
-- Hints are structural cues only ("Prerequisite", "Alternative") — never prose explanations.
+- Hints are structural cues only ("Prerequisite", "Workflow") — never prose explanations.
 
 ## General rules
 
 - No HTML. No `fetch`. **Max 6 child nodes** per section.
-- `props.title`: short section heading only (under 48 characters).
+- `props.title`: short topic label (under 48 characters). Omit if identical to sheet title.
 - Keep each string prop under 200 characters; split long content across table rows or list items.
 - Code blocks: minimal, copy-paste friendly.
 - Output must be **one complete JSON object** — trim rather than truncate JSON.
-- Do not assign final column positions — the layout assembler handles the grid.
 
 You may invent new `kind` strings if needed; keep props JSON-serializable.

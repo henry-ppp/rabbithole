@@ -21,6 +21,7 @@ const KNOWN_KINDS = new Set([
   "grid",
   "section",
   "anchor",
+  "moduleMap",
   "topicMap",
   "table",
   "code",
@@ -47,7 +48,7 @@ function tableRows(value: unknown): string[][] {
     .map((row) => row.map((cell) => String(cell)));
 }
 
-type TopicMapNode = {
+type ModuleMapNode = {
   id: string;
   label: string;
   hint?: string;
@@ -55,13 +56,13 @@ type TopicMapNode = {
   highlighted?: boolean;
 };
 
-type TopicMapEdge = {
+type ModuleMapEdge = {
   from: string;
   to: string;
   relation?: string;
 };
 
-function topicMapNodes(value: unknown): TopicMapNode[] {
+function moduleMapNodes(value: unknown): ModuleMapNode[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isPlainObject(item))
@@ -75,7 +76,7 @@ function topicMapNodes(value: unknown): TopicMapNode[] {
     .filter((node) => node.id && node.label);
 }
 
-function topicMapEdges(value: unknown): TopicMapEdge[] {
+function moduleMapEdges(value: unknown): ModuleMapEdge[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isPlainObject(item))
@@ -252,14 +253,15 @@ export function RenderNodeView({
       );
     }
 
-    case "section":
+    case "section": {
+      const showTitle = props.title && props.hideTitle !== true;
       return (
         <section
           className={`flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 ${
             compact ? "text-xs" : "text-sm"
           }`}
         >
-          {props.title ? (
+          {showTitle ? (
             <h2 className="border-b border-zinc-200 pb-1 text-sm font-semibold uppercase tracking-wide text-zinc-800 dark:border-zinc-700 dark:text-zinc-100">
               <Drillable
                 label={str(props.title)}
@@ -280,6 +282,7 @@ export function RenderNodeView({
           </div>
         </section>
       );
+    }
 
     case "anchor": {
       const label = str(props.label);
@@ -318,11 +321,12 @@ export function RenderNodeView({
       );
     }
 
+    case "moduleMap":
     case "topicMap":
       return (
-        <TopicMapView
-          nodes={topicMapNodes(props.nodes)}
-          edges={topicMapEdges(props.edges)}
+        <ModuleMapView
+          nodes={moduleMapNodes(props.nodes)}
+          edges={moduleMapEdges(props.edges)}
           compact={compact}
           onDrill={onDrill}
           drilling={drilling}
@@ -519,27 +523,27 @@ function SheetHeader({ props }: { props: Record<string, unknown> }) {
   );
 }
 
-type TopicMapViewProps = {
-  nodes: TopicMapNode[];
-  edges: TopicMapEdge[];
+type ModuleMapViewProps = {
+  nodes: ModuleMapNode[];
+  edges: ModuleMapEdge[];
   compact?: boolean;
   onDrill?: (target: DrillTarget) => void;
   drilling?: boolean;
 };
 
-function TopicMapView({
+function ModuleMapView({
   nodes,
   edges,
   compact = false,
   onDrill,
   drilling = false,
-}: TopicMapViewProps) {
+}: ModuleMapViewProps) {
   if (nodes.length === 0) {
     return null;
   }
 
-  const groups = new Map<string, TopicMapNode[]>();
-  const ungrouped: TopicMapNode[] = [];
+  const groups = new Map<string, ModuleMapNode[]>();
+  const ungrouped: ModuleMapNode[] = [];
 
   for (const node of nodes) {
     if (node.group) {
@@ -560,7 +564,7 @@ function TopicMapView({
       }`}
     >
       <p className="mb-2 text-[0.6rem] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-        Explore subtopics
+        Modules
       </p>
 
       {edges.length > 0 ? (
@@ -577,14 +581,14 @@ function TopicMapView({
                 key={`${edge.from}-${edge.to}-${i}`}
                 className="flex flex-wrap items-center gap-1 text-zinc-600 dark:text-zinc-400"
               >
-                <SubtopicCard
+                <ModuleCard
                   node={fromNode}
                   onDrill={onDrill}
                   drilling={drilling}
                   inline
                 />
                 <span className="px-0.5 text-[0.6rem] text-zinc-400">{relationLabel}</span>
-                <SubtopicCard
+                <ModuleCard
                   node={toNode}
                   onDrill={onDrill}
                   drilling={drilling}
@@ -607,7 +611,7 @@ function TopicMapView({
             </p>
             <div className="flex flex-col gap-1">
               {groupNodes.map((node) => (
-                <SubtopicCard
+                <ModuleCard
                   key={node.id}
                   node={node}
                   onDrill={onDrill}
@@ -621,7 +625,7 @@ function TopicMapView({
         {ungrouped.length > 0 ? (
           <div className="flex min-w-[7rem] flex-1 flex-col gap-1">
             {ungrouped.map((node) => (
-              <SubtopicCard
+              <ModuleCard
                 key={node.id}
                 node={node}
                 onDrill={onDrill}
@@ -635,19 +639,19 @@ function TopicMapView({
   );
 }
 
-type SubtopicCardProps = {
-  node: TopicMapNode;
+type ModuleCardProps = {
+  node: ModuleMapNode;
   onDrill?: (target: DrillTarget) => void;
   drilling?: boolean;
   inline?: boolean;
 };
 
-function SubtopicCard({
+function ModuleCard({
   node,
   onDrill,
   drilling = false,
   inline = false,
-}: SubtopicCardProps) {
+}: ModuleCardProps) {
   const highlighted = node.highlighted;
   return (
     <div
@@ -663,7 +667,7 @@ function SubtopicCard({
     >
       <Drillable
         label={node.label}
-        sourceKind="subtopic"
+        sourceKind="module"
         onDrill={onDrill}
         drilling={drilling}
         as="span"
