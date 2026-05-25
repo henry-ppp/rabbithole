@@ -2,7 +2,7 @@
 
 import type { MouseEvent, PointerEvent, ReactNode } from "react";
 import type { DrillSourceKind, DrillTarget } from "./navigation";
-import { codeDrillLabel, normalizeDrillLabel } from "./navigation";
+import { normalizeDrillLabel } from "./navigation";
 import type { RenderNode } from "./render-contract";
 import { MathSpan, RichText } from "./math-render";
 
@@ -20,6 +20,7 @@ const KNOWN_KINDS = new Set([
   "title",
   "grid",
   "section",
+  "module",
   "anchor",
   "moduleMap",
   "topicMap",
@@ -255,6 +256,7 @@ export function RenderNodeView({
 
     case "section": {
       const showTitle = props.title && props.hideTitle !== true;
+      const moduleEdges = moduleMapEdges(props.moduleEdges);
       return (
         <section
           className={`flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 ${
@@ -263,17 +265,15 @@ export function RenderNodeView({
         >
           {showTitle ? (
             <h2 className="border-b border-zinc-200 pb-1 text-sm font-semibold uppercase tracking-wide text-zinc-800 dark:border-zinc-700 dark:text-zinc-100">
-              <Drillable
-                label={str(props.title)}
-                sourceKind="section"
-                onDrill={onDrill}
-                drilling={drilling}
-                as="span"
-                className="font-semibold uppercase tracking-wide"
-              >
-                {str(props.title)}
-              </Drillable>
+              {str(props.title)}
             </h2>
+          ) : null}
+          {moduleEdges.length > 0 ? (
+            <ModuleEdgeRow
+              edges={moduleEdges}
+              modules={children.filter((child) => child.kind === "module")}
+              compact={compact}
+            />
           ) : null}
           <div className="flex flex-col gap-2">
             {children.map((child, i) => (
@@ -281,6 +281,54 @@ export function RenderNodeView({
             ))}
           </div>
         </section>
+      );
+    }
+
+    case "module": {
+      const label = str(props.label);
+      const hint = str(props.hint);
+      const group = str(props.group);
+      return (
+        <div
+          className={`rounded-lg border border-zinc-200/80 bg-white/80 p-3 dark:border-zinc-700 dark:bg-zinc-950/40 ${
+            compact ? "text-xs" : "text-sm"
+          }`}
+        >
+          <div className="mb-2 flex flex-wrap items-baseline gap-2">
+            <Drillable
+              label={label}
+              sourceKind="module"
+              onDrill={onDrill}
+              drilling={drilling}
+              as="span"
+              className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
+            >
+              {label}
+            </Drillable>
+            {group ? (
+              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                {group}
+              </span>
+            ) : null}
+            {hint ? (
+              <span className="text-[0.6rem] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                {hint}
+              </span>
+            ) : null}
+          </div>
+          {children.length > 0 ? (
+            <div className="flex flex-col gap-2">
+              {children.map((child, i) => (
+                <RenderNodeView
+                  key={i}
+                  node={child}
+                  depth={depth + 1}
+                  drilling={drilling}
+                />
+              ))}
+            </div>
+          ) : null}
+        </div>
       );
     }
 
@@ -294,16 +342,9 @@ export function RenderNodeView({
           }`}
         >
           <div className="mb-1">
-            <Drillable
-              label={label}
-              sourceKind="anchor"
-              onDrill={onDrill}
-              drilling={drilling}
-              as="span"
-              className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
-            >
+            <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
               {label}
-            </Drillable>
+            </span>
             {teachGoal ? (
               <p className="mt-0.5 text-[0.65rem] leading-snug text-zinc-500 dark:text-zinc-400">
                 <RichText text={teachGoal} />
@@ -313,7 +354,7 @@ export function RenderNodeView({
           {children.length > 0 ? (
             <div className="flex flex-col gap-1.5">
               {children.map((child, i) => (
-                <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
+                <RenderNodeView key={i} node={child} depth={depth + 1} drilling={drilling} />
               ))}
             </div>
           ) : null}
@@ -346,15 +387,7 @@ export function RenderNodeView({
                     key={i}
                     className="break-words border border-zinc-200 bg-zinc-100 px-2 py-1 font-semibold dark:border-zinc-700 dark:bg-zinc-800"
                   >
-                    <Drillable
-                      label={h}
-                      sourceKind="table"
-                      onDrill={onDrill}
-                      drilling={drilling}
-                      as="span"
-                    >
-                      {h}
-                    </Drillable>
+                    {h}
                   </th>
                 ))}
               </tr>
@@ -368,15 +401,7 @@ export function RenderNodeView({
                     key={ci}
                     className="break-words border border-zinc-200 px-2 py-1 align-top text-[0.65rem] leading-snug dark:border-zinc-700"
                   >
-                    <Drillable
-                      label={cell}
-                      sourceKind="table"
-                      onDrill={onDrill}
-                      drilling={drilling}
-                      as="span"
-                    >
-                      <RichText text={cell} />
-                    </Drillable>
+                    <RichText text={cell} />
                   </td>
                 ))}
               </tr>
@@ -388,19 +413,10 @@ export function RenderNodeView({
 
     case "code": {
       const content = str(props.content);
-      const drillLabel = codeDrillLabel(content);
       return (
-        <Drillable
-          label={drillLabel}
-          sourceKind="code"
-          onDrill={onDrill}
-          drilling={drilling}
-          className="block w-full"
-        >
-          <pre className="whitespace-pre-wrap break-words rounded-md bg-zinc-900 px-3 py-2 font-mono text-[0.7rem] leading-relaxed text-zinc-100">
-            <code>{content}</code>
-          </pre>
-        </Drillable>
+        <pre className="whitespace-pre-wrap break-words rounded-md bg-zinc-900 px-3 py-2 font-mono text-[0.7rem] leading-relaxed text-zinc-100">
+          <code>{content}</code>
+        </pre>
       );
     }
 
@@ -414,42 +430,21 @@ export function RenderNodeView({
             : "border-blue-500/50 bg-blue-50 text-blue-950 dark:bg-blue-950/30 dark:text-blue-100";
       const title = str(props.title);
       const content = str(props.content);
-      const calloutLabel =
-        title || content.split(/\r?\n/)[0]?.trim() || content;
 
       return (
         <aside
           className={`rounded-md border-l-4 px-3 py-2 text-xs ${toneClass}`}
         >
           {title ? (
-            <p className="mb-1 font-semibold">
-              <Drillable
-                label={title}
-                sourceKind="callout"
-                onDrill={onDrill}
-                drilling={drilling}
-                as="span"
-                className="font-semibold"
-              >
-                {title}
-              </Drillable>
-            </p>
+            <p className="mb-1 font-semibold">{title}</p>
           ) : content ? (
-            <Drillable
-              label={calloutLabel}
-              sourceKind="callout"
-              onDrill={onDrill}
-              drilling={drilling}
-              className="block"
-            >
-              <p>
-                <RichText text={content} />
-              </p>
-            </Drillable>
+            <p>
+              <RichText text={content} />
+            </p>
           ) : null}
           {children.length > 0
             ? children.map((child, i) => (
-                <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
+                <RenderNodeView key={i} node={child} depth={depth + 1} drilling={drilling} />
               ))
             : null}
         </aside>
@@ -483,15 +478,7 @@ export function RenderNodeView({
         >
           {items.map((item, i) => (
             <li key={i} className="text-zinc-700 dark:text-zinc-300">
-              <Drillable
-                label={item}
-                sourceKind="list"
-                onDrill={onDrill}
-                drilling={drilling}
-                as="span"
-              >
-                <RichText text={item} />
-              </Drillable>
+              <RichText text={item} />
             </li>
           ))}
         </ListTag>
@@ -520,6 +507,51 @@ function SheetHeader({ props }: { props: Record<string, unknown> }) {
         </p>
       ) : null}
     </header>
+  );
+}
+
+function ModuleEdgeRow({
+  edges,
+  modules,
+  compact = false,
+}: {
+  edges: ModuleMapEdge[];
+  modules: RenderNode[];
+  compact?: boolean;
+}) {
+  const labelById = new Map<string, string>();
+  for (const moduleNode of modules) {
+    const id = str(moduleNode.props?.id);
+    const label = str(moduleNode.props?.label);
+    if (id && label) {
+      labelById.set(id, label);
+    }
+  }
+
+  return (
+    <div
+      className={`space-y-1 rounded-md border border-dashed border-zinc-300/80 bg-zinc-100/50 p-2 dark:border-zinc-700 dark:bg-zinc-900/30 ${
+        compact ? "text-[0.65rem]" : "text-xs"
+      }`}
+    >
+      {edges.map((edge, i) => {
+        const fromLabel = labelById.get(edge.from) ?? edge.from;
+        const toLabel = labelById.get(edge.to) ?? edge.to;
+        const relationLabel = edge.relation
+          ? RELATION_LABELS[edge.relation] ?? edge.relation
+          : "→";
+        return (
+          <div
+            key={`${edge.from}-${edge.to}-${i}`}
+            className="flex flex-wrap items-center gap-1 text-zinc-600 dark:text-zinc-400"
+          >
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">{fromLabel}</span>
+            <span className="px-0.5 text-[0.6rem] text-zinc-400">{relationLabel}</span>
+            <span className="font-medium text-zinc-700 dark:text-zinc-300">{toLabel}</span>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

@@ -36,13 +36,13 @@ async function main() {
   }
 
   const nodeCount = countNodes(tree);
-  const sectionPhases = meta.phases.filter((p) =>
-    p.name.startsWith("section-writer:"),
+  const shellPhases = meta.phases.filter((p) =>
+    p.name.startsWith("shell-assembler") || p.name === "planner",
   );
 
   console.log(`OK in ${((Date.now() - started) / 1000).toFixed(1)}s`);
-  console.log(`  Sections planned: ${meta.coverageMap?.sections.length ?? "?"}`);
-  console.log(`  Section writer phases: ${sectionPhases.length}`);
+  console.log(`  Modules planned: ${meta.coverageMap?.sections[0]?.modules?.length ?? "?"}`);
+  console.log(`  Shell phases: ${shellPhases.length}`);
   console.log(`  Render tree nodes: ${nodeCount}`);
   if (meta.sectionsTruncated) {
     console.warn("  Warning: coverage sections were truncated at safety ceiling");
@@ -64,7 +64,7 @@ async function main() {
   const fallbacks = meta.phases.filter((p) => p.name.includes("(fallback)"));
   if (fallbacks.length > 0) {
     console.warn(
-      `Note: ${fallbacks.length} section(s) used programmatic fallback (sheet still valid).`,
+      `Note: ${fallbacks.length} sheet(s) used programmatic fallback (still valid).`,
     );
   }
 

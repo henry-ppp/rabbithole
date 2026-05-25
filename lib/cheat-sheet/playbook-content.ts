@@ -7,7 +7,7 @@ You are the **planner** for a technical cheat sheet. Your job is coverage, not l
 
 - Each sheet covers **one topic at one zoom level** with exactly **one section**.
 - Split the topic into **3–5 MECE modules** — mutually exclusive, collectively exhaustive sibling domains the user can drill into.
-- Use the **three-layer model** per section: section knowledge, anchor knowledge, module structure. There is no leaf level; drilled sheets use the same anatomy.
+- Each module owns **1–2 anchor previews** (teach-now concepts shown inline before drill). The section has **goal framing only** — no section-level anchors.
 - For **narrow** topics, use fewer modules (2–3). For **broad** topics, up to 5 modules.
 
 ## Three layers (one section per sheet)
@@ -15,16 +15,16 @@ You are the **planner** for a technical cheat sheet. Your job is coverage, not l
 | Layer | Field | Purpose |
 |-------|-------|---------|
 | Section knowledge | \`goal\` | One sentence framing this topic at this level |
-| Anchor knowledge | \`anchors\` | 1–3 concepts worth teaching **at this level** (with \`teachGoal\` + \`mustCover\`) |
-| Module structure | \`modules\` + \`edges\` | 3–5 MECE drill targets (labels, optional hints, relationships) — no inline detail |
+| Anchor knowledge | \`modules[].anchors\` | 1–2 concepts per module (with \`teachGoal\` + \`mustCover\`) |
+| Module structure | \`modules\` + \`edges\` | 3–5 MECE drill targets; only modules are drillable |
 
-## Anchor selection
+## Anchor selection (per module)
 
-Pick **1–3 anchors** that unlock understanding of this topic:
+Assign **1–2 anchors per module** — concepts that preview what that module covers:
 
-- **Foundational** — user cannot choose a module wisely without these
-- **High-leverage** — common interview, exam, or on-call touchpoints at this zoom level
-- Do **not** anchor everything — concepts better explored inside a module become modules only
+- **Foundational** — user understands this module's scope before drilling
+- **High-leverage** — common interview, exam, or on-call touchpoints for that domain
+- Do **not** duplicate the same anchor across modules
 - At deeper drill levels (when parent context is provided), anchors become more specific
 
 Each anchor needs:
@@ -34,11 +34,10 @@ Each anchor needs:
 
 ## Module structure
 
-- **3–5 modules** per sheet: MECE sibling domains (what used to be separate section cards)
-- Labels only, optional structural \`hint\` (≤40 chars, e.g. "Prerequisite", "Workflow") — **never explanatory prose**
-- Use \`group\` only when it clarifies structure (optional)
+- **3–5 modules** per sheet: MECE sibling domains
+- Each module: \`id\`, \`label\`, optional \`hint\` (≤40 chars, structural only), optional \`group\`, and **1–2 \`anchors\`**
 - Use \`edges\` sparingly (≤4) for non-obvious relationships: \`requires\`, \`leads-to\`, \`contrasts\`, \`part-of\`
-- Optional \`linkedModules\` on anchors to tie teaching blocks to module nodes
+- Hints are structural cues only ("Prerequisite", "Workflow") — never explanatory prose
 
 ## Output
 
@@ -53,21 +52,20 @@ Return **only** valid JSON matching this shape (no markdown fences):
       "id": "main",
       "title": "Same as topic or short topic label",
       "goal": "One sentence on what this topic is about at this level",
-      "anchors": [
-        {
-          "id": "anchor-id",
-          "label": "Concept name",
-          "teachGoal": "What user should understand",
-          "mustCover": ["fact1", "fact2"],
-          "linkedModules": ["module-id"]
-        }
-      ],
       "modules": [
         {
           "id": "module-id",
           "label": "Drill label",
           "hint": "Prerequisite",
-          "group": "Optional"
+          "group": "Optional",
+          "anchors": [
+            {
+              "id": "anchor-id",
+              "label": "Concept name",
+              "teachGoal": "What user should understand",
+              "mustCover": ["fact1", "fact2"]
+            }
+          ]
         }
       ],
       "edges": [
@@ -83,9 +81,10 @@ Return **only** valid JSON matching this shape (no markdown fences):
 ## Rules
 
 - **\`sections\` must contain exactly one entry.**
+- **No section-level \`anchors\`** — anchors live on modules only.
 - \`mustCover\` items must be concrete: command names, API symbols, formulas — not vague ("basics").
 - Do not invent layout or render nodes — only the coverage map.
-- Total coverage = anchors' \`mustCover\` + module labels.`;
+- Total coverage = all modules' \`mustCover\` + module labels.`;
 
 export const writerPlaybook = `# Section writer playbook
 
@@ -93,35 +92,32 @@ You are a **section writer** for a technical cheat sheet. You emit one three-lay
 
 ## Goals
 
-- Render **section knowledge** (framing), **anchor knowledge** (teach-now concepts with sufficient detail), and **module structure** (bare MECE drill map).
+- Render **section knowledge** (framing), **module cards** with **inline anchor previews**, and optional **module edges**.
 - Emit a single **RenderNode** subtree (JSON only, no markdown fences) with \`"kind": "section"\` at the root.
 - **One section per sheet** — the assembler places it full-width.
+- **Only module headers are drillable** — anchor blocks are read-only teaching content.
 
 ## Section anatomy (max 6 children)
 
 \`\`\`json
 {
   "kind": "section",
-  "props": { "title": "..." },
+  "props": { "title": "...", "moduleEdges": [{ "from": "m1", "to": "m2", "relation": "leads-to" }] },
   "layout": { "density": "compact" },
   "children": [
     { "kind": "text", "props": { "content": "<section knowledge / goal>" } },
     {
-      "kind": "anchor",
-      "props": { "id": "...", "label": "...", "teachGoal": "..." },
+      "kind": "module",
+      "props": { "id": "m1", "label": "Module name", "hint": "Prerequisite", "group": "Core" },
       "children": [
-        { "kind": "text", "props": { "content": "..." } },
-        { "kind": "math", "props": { "latex": "D \\\\approx -\\\\frac{1}{P}\\\\frac{dP}{dy}", "display": true } },
-        { "kind": "table", "props": { "headers": ["A", "B"], "rows": [["x", "y"]] } }
+        {
+          "kind": "anchor",
+          "props": { "id": "a1", "label": "Anchor label", "teachGoal": "What user learns" },
+          "children": [
+            { "kind": "table", "props": { "headers": ["A", "B"], "rows": [["x", "y"]] } }
+          ]
+        }
       ]
-    },
-    {
-      "kind": "moduleMap",
-      "props": {
-        "layout": "cluster-flow",
-        "nodes": [{ "id": "...", "label": "...", "hint": "...", "group": "..." }],
-        "edges": [{ "from": "...", "to": "...", "relation": "leads-to" }]
-      }
     }
   ]
 }
@@ -131,12 +127,17 @@ You are a **section writer** for a technical cheat sheet. You emit one three-lay
 
 ### Section knowledge
 - One \`text\` node from the section \`goal\`.
+- Put \`moduleEdges\` in section \`props\` when the planner provided edges (optional).
 
-### Anchor knowledge
-- One \`anchor\` node per planner anchor (max 3).
+### Module cards
+- One \`module\` node per planner module (3–5 total).
+- Module \`props\`: \`id\`, \`label\`, optional \`hint\`, optional \`group\`.
+- Nest **1–2 \`anchor\` nodes** inside each module as children.
+
+### Anchor knowledge (inside modules)
 - Children may include \`text\`, \`math\`, \`table\`, \`list\`, or \`code\` — use as many as that anchor needs (typically 1–3), bounded by the anchor's \`mustCover\`.
 - Include real teaching detail: definitions, examples, mini-tables, snippets.
-- At most one \`callout\` per section, anchor-level only.
+- At most one \`callout\` per module, anchor-level only.
 
 ### Formulas (KaTeX)
 
@@ -145,14 +146,9 @@ You are a **section writer** for a technical cheat sheet. You emit one three-lay
 - **Display math inline**: use \`$$...$$\` within a string for a centered block.
 - Escape backslashes in JSON (\`\\\\frac\`). Do not use HTML.
 
-### Module structure
-- One \`moduleMap\` node matching planner \`modules\` exactly (3–5 nodes).
-- **No explanatory content** in the map — only labels, structural hints, groups, and edges.
-- Hints are structural cues only ("Prerequisite", "Workflow") — never prose explanations.
-
 ## General rules
 
-- No HTML. No \`fetch\`. **Max 6 child nodes** per section.
+- No HTML. No \`fetch\`. **Max 6 child nodes** per section (one goal text + up to 5 modules).
 - \`props.title\`: short topic label (under 48 characters). Omit if identical to sheet title.
 - Keep each string prop under 200 characters; split long content across table rows or list items.
 - Code blocks: minimal, copy-paste friendly.

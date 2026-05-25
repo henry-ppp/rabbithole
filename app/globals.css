@@ -24,3 +24,34 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Cheat sheet artboard is always paper-white (readable) regardless of OS theme. */
+.cheat-sheet-artboard {
+  color-scheme: light;
+  background-color: #ffffff !important;
+  color: #18181b !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  .cheat-sheet-artboard h1,
+  .cheat-sheet-artboard h2,
+  .cheat-sheet-artboard h3,
+  .cheat-sheet-artboard p,
+  .cheat-sheet-artboard span,
+  .cheat-sheet-artboard button,
+  .cheat-sheet-artboard li,
+  .cheat-sheet-artboard td,
+  .cheat-sheet-artboard th {
+    color: inherit;
+  }
+
+  .cheat-sheet-artboard .text-zinc-500,
+  .cheat-sheet-artboard .text-zinc-400,
+  .cheat-sheet-artboard .text-zinc-600 {
+    color: #52525b !important;
+  }
+
+  .cheat-sheet-artboard .text-violet-600 {
+    color: #7c3aed !important;
+  }
+}

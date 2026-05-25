@@ -119,6 +119,51 @@ export default function CheatSheetPage() {
     [loading, stack.length, applyResponse],
   );
 
+  const handleRegenerate = useCallback(async () => {
+    if (loading || stack.length === 0) return;
+
+    const frameIndex = stack.length - 1;
+    const currentFrame = stack[frameIndex]!;
+    const parentContext =
+      frameIndex > 0 ? stack[frameIndex - 1]!.topic : undefined;
+
+    setLoading(true);
+    setError(null);
+    setWarnings([]);
+    setDepthLimitMessage(null);
+
+    const key = cacheKey(currentFrame.topic, audience, depth);
+    sessionCache.current.delete(key);
+
+    try {
+      const json = await fetchCheatSheet({
+        topic: currentFrame.topic,
+        audience,
+        depth,
+        parentContext,
+      });
+
+      sessionCache.current.set(key, json);
+      const newFrame = createFrame(
+        currentFrame.label,
+        currentFrame.topic,
+        json,
+        currentFrame.retrialCount + 1 + (json.meta.retrialCount ?? 0),
+      );
+
+      setStack((prev) => {
+        const next = [...prev];
+        next[frameIndex] = newFrame;
+        return next;
+      });
+      applyResponse(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }, [loading, stack, audience, depth, applyResponse]);
+
   const handleDrill = useCallback(
     async (target: DrillTarget) => {
       if (loading || stack.length === 0) return;
@@ -242,8 +287,9 @@ export default function CheatSheetPage() {
       {stack.length > 0 ? (
         <nav
           aria-label="Cheat sheet breadcrumbs"
-          className="flex shrink-0 flex-wrap items-center gap-1 border-b border-zinc-200 bg-white px-4 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b border-zinc-200 bg-white px-4 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
         >
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
           {stack.map((frame, index) => {
             const isLast = index === stack.length - 1;
             const allowNav =
@@ -280,6 +326,16 @@ export default function CheatSheetPage() {
           {loading && stack.length > 1 ? (
             <span className="ml-2 text-xs text-zinc-500">Exploring?</span>
           ) : null}
+          </div>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={handleRegenerate}
+            className="shrink-0 rounded-md border border-zinc-300 px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+            title="Regenerate this level with a fresh cheat sheet"
+          >
+            Regenerate
+          </button>
         </nav>
       ) : null}
 
@@ -310,6 +366,7 @@ export default function CheatSheetPage() {
               key={activeFrame?.id ?? "viewport"}
               artboardWidth={1400}
               artboardMinHeight={1000}
+              retrialCount={activeFrame?.retrialCount ?? 0}
             >
               <RenderNodeView
                 node={activeResponse.tree}
@@ -331,8 +388,8 @@ export default function CheatSheetPage() {
         ) : (
           <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-zinc-500">
             Enter a topic and generate, or load the Git rebase fixture to preview
-            the canvas. Click section titles, table cells, list items, or code
-            blocks to explore deeper.
+            the canvas. Read anchor previews in each module, then click a module
+            title to drill deeper.
           </div>
         )}
       </main>

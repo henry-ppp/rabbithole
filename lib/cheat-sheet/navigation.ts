@@ -4,14 +4,7 @@ export const MAX_NAV_DEPTH = 8;
 export const MAX_TOPIC_LENGTH = 200;
 export const MAX_DRILL_LABEL_LENGTH = 120;
 
-export type DrillSourceKind =
-  | "section"
-  | "anchor"
-  | "module"
-  | "callout"
-  | "table"
-  | "list"
-  | "code";
+export type DrillSourceKind = "module";
 
 export type DrillTarget = {
   label: string;
@@ -23,7 +16,13 @@ export type CheatSheetFrame = {
   label: string;
   topic: string;
   response: CheatSheetResponse;
+  /** Cumulative retrials at this level (agent JSON retries + user regenerations). */
+  retrialCount: number;
 };
+
+export function agentRetrialCount(response: CheatSheetResponse): number {
+  return response.meta.retrialCount ?? 0;
+}
 
 export function normalizeDrillLabel(label: string): string {
   const trimmed = label.trim().replace(/\s+/g, " ");
@@ -89,11 +88,13 @@ export function createFrame(
   label: string,
   topic: string,
   response: CheatSheetResponse,
+  retrialCount = agentRetrialCount(response),
 ): CheatSheetFrame {
   return {
     id: crypto.randomUUID(),
     label: normalizeDrillLabel(label) || topic.slice(0, 40),
     topic: truncateTopic(topic),
     response,
+    retrialCount,
   };
 }

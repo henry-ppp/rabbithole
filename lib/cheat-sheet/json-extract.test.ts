@@ -5,6 +5,7 @@ import {
   buildFallbackSectionNode,
   extractJsonFromAgentText,
   findBalancedJsonEnd,
+  MAX_ANCHORS_PER_MODULE,
   MAX_SECTIONS_PER_SHEET,
   parseCoverageMap,
   parseSectionWriterOutput,
@@ -46,7 +47,7 @@ describe("shortSectionTitle", () => {
 });
 
 describe("parseCoverageMap", () => {
-  it("parses single-section coverage with anchors and modules", () => {
+  it("parses modules with nested anchors", () => {
     const parsed = parseCoverageMap({
       topic: "Git rebase",
       title: "Git Rebase",
@@ -55,16 +56,21 @@ describe("parseCoverageMap", () => {
           id: "main",
           title: "Git rebase",
           goal: "Core rebase workflow",
-          anchors: [
-            {
-              id: "a1",
-              label: "What rebase does",
-              teachGoal: "Replay commits",
-              mustCover: ["git rebase main"],
-            },
-          ],
           modules: [
-            { id: "m1", label: "Everyday workflow", group: "Core", hint: "Start here" },
+            {
+              id: "m1",
+              label: "Everyday workflow",
+              group: "Core",
+              hint: "Start here",
+              anchors: [
+                {
+                  id: "a1",
+                  label: "What rebase does",
+                  teachGoal: "Replay commits",
+                  mustCover: ["git rebase main"],
+                },
+              ],
+            },
           ],
           edges: [{ from: "m1", to: "m2", relation: "leads-to" }],
         },
@@ -74,9 +80,36 @@ describe("parseCoverageMap", () => {
     assert.ok(parsed);
     const section = parsed!.map.sections[0];
     assert.equal(parsed!.map.sections.length, 1);
-    assert.equal(section.anchors?.length, 1);
     assert.equal(section.modules?.length, 1);
+    assert.equal(section.modules?.[0].anchors?.length, 1);
     assert.equal(section.edges?.length, 1);
+    assert.equal((section as { anchors?: unknown }).anchors, undefined);
+  });
+
+  it("migrates legacy section anchors into modules via linkedModules", () => {
+    const parsed = parseCoverageMap({
+      topic: "Git",
+      title: "Git",
+      sections: [
+        {
+          id: "main",
+          title: "Git",
+          goal: "Goal",
+          anchors: [
+            {
+              id: "a1",
+              label: "Basics",
+              teachGoal: "Learn basics",
+              mustCover: ["git init"],
+              linkedModules: ["m1"],
+            },
+          ],
+          modules: [{ id: "m1", label: "Everyday" }],
+        },
+      ],
+    });
+    assert.equal(parsed!.map.sections[0].modules?.[0].anchors?.length, 1);
+    assert.equal(parsed!.map.sections[0].modules?.[0].anchors?.[0].label, "Basics");
   });
 
   it("accepts legacy subtopics as modules", () => {
@@ -107,6 +140,7 @@ describe("parseCoverageMap", () => {
     assert.equal(parsed!.map.sections.length, 1);
     assert.equal(parsed!.sectionsTruncated, true);
     assert.equal(MAX_SECTIONS_PER_SHEET, 1);
+    assert.equal(MAX_ANCHORS_PER_MODULE, 2);
   });
 });
 
@@ -120,7 +154,22 @@ describe("sanitizeRenderNode", () => {
     assert.equal(node?.props?.latex, "x^2");
   });
 
-  it("accepts moduleMap node kind", () => {
+  it("accepts module node kind", () => {
+    const node = sanitizeRenderNode({
+      kind: "module",
+      props: { id: "m1", label: "Basics" },
+      children: [
+        {
+          kind: "anchor",
+          props: { label: "Anchor", teachGoal: "Learn" },
+        },
+      ],
+    });
+    assert.equal(node?.kind, "module");
+    assert.equal(node?.children?.[0]?.kind, "anchor");
+  });
+
+  it("accepts moduleMap node kind for legacy trees", () => {
     const node = sanitizeRenderNode({
       kind: "moduleMap",
       props: { nodes: [{ id: "m1", label: "Basics" }] },
@@ -130,34 +179,43 @@ describe("sanitizeRenderNode", () => {
 });
 
 describe("buildFallbackSectionNode", () => {
-  it("builds three-layer section from anchors and modules", () => {
+  it("builds module cards with nested anchors", () => {
     const node = buildFallbackSectionNode({
       id: "main",
       title: "Git rebase",
       goal: "Core rebase workflow",
-      anchors: [
-        {
-          id: "a1",
-          label: "What rebase does",
-          teachGoal: "Replay commits onto a new base",
-          mustCover: ["git rebase main", "git fetch first"],
-        },
-      ],
       modules: [
-        { id: "m1", label: "Everyday workflow", group: "Core" },
+        {
+          id: "m1",
+          label: "Everyday workflow",
+          group: "Core",
+          anchors: [
+            {
+              id: "a1",
+              label: "What rebase does",
+              teachGoal: "Replay commits onto a new base",
+              mustCover: ["git rebase main", "git fetch first"],
+            },
+          ],
+        },
         { id: "m2", label: "Recovery", group: "Recovery" },
       ],
+      edges: [{ from: "m1", to: "m2", relation: "leads-to" }],
     });
 
     assert.equal(node.kind, "section");
     assert.equal(node.props?.title, "Git rebase");
+    assert.ok(Array.isArray(node.props?.moduleEdges));
     const kinds = (node.children ?? []).map((child) => child.kind);
     assert.ok(kinds.includes("text"));
-    assert.ok(kinds.includes("anchor"));
-    assert.ok(kinds.includes("moduleMap"));
+    assert.ok(kinds.includes("module"));
+    assert.equal(kinds.includes("anchor"), false);
+    assert.equal(kinds.includes("moduleMap"), false);
+    const firstModule = node.children?.find((child) => child.kind === "module");
+    assert.equal(firstModule?.children?.[0]?.kind, "anchor");
   });
 
-  it("builds legacy section from mustInclude when no anchors/modules", () => {
+  it("builds legacy section from mustInclude when no modules", () => {
     const node = buildFallbackSectionNode({
       id: "fi",
       title: "Fixed Income (term structure)",
@@ -167,7 +225,7 @@ describe("buildFallbackSectionNode", () => {
     assert.equal(node.kind, "section");
     assert.equal(node.props?.title, "Fixed Income");
     assert.ok((node.children?.length ?? 0) >= 1);
-    assert.equal(node.children?.some((c) => c.kind === "moduleMap"), false);
+    assert.equal(node.children?.some((c) => c.kind === "module"), false);
   });
 });
 
@@ -196,7 +254,7 @@ describe("parseSectionWriterOutput", () => {
     assert.equal(node?.children?.length, 1);
   });
 
-  it("parses three-layer section with anchor and moduleMap", () => {
+  it("parses section with module and nested anchor", () => {
     const node = parseSectionWriterOutput(
       {
         kind: "section",
@@ -204,24 +262,24 @@ describe("parseSectionWriterOutput", () => {
         children: [
           { kind: "text", props: { content: "Framing sentence." } },
           {
-            kind: "anchor",
-            props: { label: "Anchor", teachGoal: "Learn this" },
-            children: [{ kind: "list", props: { items: ["a"] } }],
-          },
-          {
-            kind: "moduleMap",
-            props: {
-              nodes: [{ id: "m1", label: "Module", group: "G" }],
-            },
+            kind: "module",
+            props: { id: "m1", label: "Module", group: "G" },
+            children: [
+              {
+                kind: "anchor",
+                props: { label: "Anchor", teachGoal: "Learn this" },
+                children: [{ kind: "list", props: { items: ["a"] } }],
+              },
+            ],
           },
         ],
       },
       "Basics",
     );
     assert.equal(node?.kind, "section");
-    assert.equal(node?.children?.length, 3);
-    assert.equal(node?.children?.[1]?.kind, "anchor");
-    assert.equal(node?.children?.[2]?.kind, "moduleMap");
+    assert.equal(node?.children?.length, 2);
+    assert.equal(node?.children?.[1]?.kind, "module");
+    assert.equal(node?.children?.[1]?.children?.[0]?.kind, "anchor");
   });
 
   it("infers section when kind is missing but children exist", () => {

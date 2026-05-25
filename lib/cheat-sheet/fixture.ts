@@ -13,36 +13,77 @@ export const gitRebaseFixture: CheatSheetResponse = {
           id: "main",
           title: "Git rebase",
           goal: "Replay commits onto a new base — rewrite history locally while keeping a linear story.",
-          anchors: [
-            {
-              id: "what-rebase",
-              label: "What rebase does",
-              teachGoal: "Rebase rewrites commit history by replaying your branch onto another base.",
-              mustCover: [
-                "git rebase main — replay onto main",
-                "git fetch origin && git rebase origin/main",
-              ],
-              linkedModules: ["everyday"],
-            },
-            {
-              id: "vs-merge",
-              label: "Rebase vs merge",
-              teachGoal: "Rebase linearizes history; merge preserves branch topology with a merge commit.",
-              mustCover: [
-                "Rebase: replay commits, new SHAs",
-                "Merge: join tips, keeps parallel history",
-              ],
-            },
-          ],
           modules: [
-            { id: "everyday", label: "Everyday workflow", group: "Core" },
-            { id: "interactive", label: "Interactive rebase", group: "Core" },
-            { id: "recovery", label: "Recovery & conflicts", hint: "When things break", group: "Recovery" },
-            { id: "advanced", label: "Rebase --onto", hint: "Transplant", group: "Advanced" },
+            {
+              id: "everyday",
+              label: "Everyday workflow",
+              group: "Core",
+              anchors: [
+                {
+                  id: "what-rebase",
+                  label: "What rebase does",
+                  teachGoal:
+                    "Rebase rewrites commit history by replaying your branch onto another base.",
+                  mustCover: [
+                    "git rebase main — replay onto main",
+                    "git fetch origin && git rebase origin/main",
+                  ],
+                },
+                {
+                  id: "vs-merge",
+                  label: "Rebase vs merge",
+                  teachGoal:
+                    "Rebase linearizes history; merge preserves branch topology with a merge commit.",
+                  mustCover: [
+                    "Rebase: replay commits, new SHAs",
+                    "Merge: join tips, keeps parallel history",
+                  ],
+                },
+              ],
+            },
+            {
+              id: "interactive",
+              label: "Interactive rebase",
+              group: "Core",
+              anchors: [
+                {
+                  id: "interactive-basics",
+                  label: "Rewriting commits",
+                  teachGoal: "Interactive rebase lets you edit, squash, or reorder commits.",
+                  mustCover: ["git rebase -i HEAD~n", "pick, squash, fixup, drop"],
+                },
+              ],
+            },
+            {
+              id: "recovery",
+              label: "Recovery & conflicts",
+              hint: "When things break",
+              group: "Recovery",
+              anchors: [
+                {
+                  id: "abort-continue",
+                  label: "Abort or continue",
+                  teachGoal: "Use abort to cancel; continue after resolving conflicts.",
+                  mustCover: ["git rebase --abort", "git rebase --continue"],
+                },
+              ],
+            },
+            {
+              id: "advanced",
+              label: "Rebase --onto",
+              hint: "Transplant",
+              group: "Advanced",
+              anchors: [
+                {
+                  id: "onto",
+                  label: "Transplant commits",
+                  teachGoal: "Replay a slice of commits onto a new base branch.",
+                  mustCover: ["git rebase --onto newbase upstream branch"],
+                },
+              ],
+            },
           ],
-          edges: [
-            { from: "recovery", to: "advanced", relation: "leads-to" },
-          ],
+          edges: [{ from: "recovery", to: "advanced", relation: "leads-to" }],
         },
       ],
     },
@@ -57,7 +98,13 @@ export const gitRebaseFixture: CheatSheetResponse = {
         children: [
           {
             kind: "section",
-            props: { title: "Git rebase", hideTitle: true },
+            props: {
+              title: "Git rebase",
+              hideTitle: true,
+              moduleEdges: [
+                { from: "recovery", to: "advanced", relation: "leads-to" },
+              ],
+            },
             layout: { column: 0, density: "compact", span: 1 },
             children: [
               {
@@ -68,79 +115,138 @@ export const gitRebaseFixture: CheatSheetResponse = {
                 },
               },
               {
-                kind: "anchor",
+                kind: "module",
                 props: {
-                  id: "what-rebase",
-                  label: "What rebase does",
-                  teachGoal:
-                    "Rebase rewrites commit history by replaying your branch onto another base.",
+                  id: "everyday",
+                  label: "Everyday workflow",
+                  group: "Core",
                 },
                 children: [
                   {
-                    kind: "table",
+                    kind: "anchor",
                     props: {
-                      headers: ["Command", "What it does"],
-                      rows: [
-                        ["git rebase main", "Replay branch onto main"],
-                        ["git fetch && git rebase origin/main", "Update then rebase"],
-                      ],
+                      id: "what-rebase",
+                      label: "What rebase does",
+                      teachGoal:
+                        "Rebase rewrites commit history by replaying your branch onto another base.",
                     },
+                    children: [
+                      {
+                        kind: "table",
+                        props: {
+                          headers: ["Command", "What it does"],
+                          rows: [
+                            ["git rebase main", "Replay branch onto main"],
+                            ["git fetch && git rebase origin/main", "Update then rebase"],
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    kind: "anchor",
+                    props: {
+                      id: "vs-merge",
+                      label: "Rebase vs merge",
+                      teachGoal:
+                        "Rebase linearizes history; merge preserves branch topology with a merge commit.",
+                    },
+                    children: [
+                      {
+                        kind: "list",
+                        props: {
+                          items: [
+                            "Rebase: replay commits, new SHAs",
+                            "Merge: join tips, keeps parallel history",
+                          ],
+                        },
+                      },
+                    ],
                   },
                 ],
               },
               {
-                kind: "anchor",
+                kind: "module",
                 props: {
-                  id: "vs-merge",
-                  label: "Rebase vs merge",
-                  teachGoal:
-                    "Rebase linearizes history; merge preserves branch topology with a merge commit.",
+                  id: "interactive",
+                  label: "Interactive rebase",
+                  group: "Core",
                 },
                 children: [
                   {
-                    kind: "list",
+                    kind: "anchor",
                     props: {
-                      items: [
-                        "Rebase: replay commits, new SHAs",
-                        "Merge: join tips, keeps parallel history",
-                      ],
+                      id: "interactive-basics",
+                      label: "Rewriting commits",
+                      teachGoal:
+                        "Interactive rebase lets you edit, squash, or reorder commits.",
                     },
+                    children: [
+                      {
+                        kind: "list",
+                        props: {
+                          items: ["git rebase -i HEAD~n", "pick, squash, fixup, drop"],
+                        },
+                      },
+                    ],
                   },
                 ],
               },
               {
-                kind: "moduleMap",
+                kind: "module",
                 props: {
-                  layout: "cluster-flow",
-                  nodes: [
-                    {
-                      id: "everyday",
-                      label: "Everyday workflow",
-                      group: "Core",
-                      highlighted: true,
-                    },
-                    {
-                      id: "interactive",
-                      label: "Interactive rebase",
-                      group: "Core",
-                    },
-                    {
-                      id: "recovery",
-                      label: "Recovery & conflicts",
-                      hint: "When things break",
-                      group: "Recovery",
-                    },
-                    {
-                      id: "advanced",
-                      label: "Rebase --onto",
-                      hint: "Transplant",
-                      group: "Advanced",
-                    },
-                  ],
-                  edges: [
-                    { from: "recovery", to: "advanced", relation: "leads-to" },
-                  ],
+                  id: "recovery",
+                  label: "Recovery & conflicts",
+                  hint: "When things break",
+                  group: "Recovery",
                 },
+                children: [
+                  {
+                    kind: "anchor",
+                    props: {
+                      id: "abort-continue",
+                      label: "Abort or continue",
+                      teachGoal:
+                        "Use abort to cancel; continue after resolving conflicts.",
+                    },
+                    children: [
+                      {
+                        kind: "list",
+                        props: {
+                          items: ["git rebase --abort", "git rebase --continue"],
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                kind: "module",
+                props: {
+                  id: "advanced",
+                  label: "Rebase --onto",
+                  hint: "Transplant",
+                  group: "Advanced",
+                },
+                children: [
+                  {
+                    kind: "anchor",
+                    props: {
+                      id: "onto",
+                      label: "Transplant commits",
+                      teachGoal:
+                        "Replay a slice of commits onto a new base branch.",
+                    },
+                    children: [
+                      {
+                        kind: "list",
+                        props: {
+                          items: ["git rebase --onto newbase upstream branch"],
+                        },
+                      },
+                    ],
+                  },
+                ],
               },
             ],
           },

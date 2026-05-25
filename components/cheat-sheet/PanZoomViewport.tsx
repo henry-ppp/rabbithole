@@ -47,6 +47,7 @@ type PanZoomViewportProps = {
   children: ReactNode;
   artboardWidth?: number;
   artboardMinHeight?: number;
+  retrialCount?: number;
   className?: string;
 };
 
@@ -54,6 +55,7 @@ export function PanZoomViewport({
   children,
   artboardWidth = 1400,
   artboardMinHeight = 900,
+  retrialCount = 0,
   className = "",
 }: PanZoomViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -261,12 +263,20 @@ export function PanZoomViewport({
           }}
         >
           <div
-            className="rounded-lg bg-white shadow-sm ring-1 ring-zinc-300/80 dark:bg-zinc-900 dark:ring-zinc-700"
+            className="relative rounded-lg bg-white shadow-sm ring-1 ring-zinc-300/80 dark:bg-zinc-900 dark:ring-zinc-700"
             style={{
               width: artboardWidth,
               minHeight: artboardMinHeight,
             }}
           >
+            {retrialCount > 0 ? (
+              <div
+                className="pointer-events-none absolute right-4 top-4 z-10 select-none font-mono text-3xl font-semibold tabular-nums leading-none text-amber-600 dark:text-amber-400"
+                aria-label={`${retrialCount} retrials`}
+              >
+                {retrialCount}
+              </div>
+            ) : null}
             {children}
           </div>
         </div>

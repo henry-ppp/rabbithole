@@ -25,6 +25,8 @@ export type ModuleNode = {
   label: string;
   hint?: string;
   group?: string;
+  /** 1–2 teach-now concepts owned by this module. */
+  anchors?: AnchorKnowledge[];
 };
 
 export type AnchorKnowledge = {
@@ -32,16 +34,13 @@ export type AnchorKnowledge = {
   label: string;
   teachGoal: string;
   mustCover: string[];
-  linkedModules?: string[];
 };
 
 export type CoverageSection = {
   id: string;
   title: string;
   goal: string;
-  /** Teach-now concepts (1–3 per section). */
-  anchors?: AnchorKnowledge[];
-  /** MECE drill modules (3–5 per sheet). */
+  /** MECE drill modules (3–5 per sheet), each with inline anchor previews. */
   modules?: ModuleNode[];
   edges?: ModuleEdge[];
   /** Legacy dense mode when anchors/modules are absent. */
@@ -56,9 +55,7 @@ export type SubtopicEdge = ModuleEdge;
 export type SubtopicNode = ModuleNode;
 
 export function hasThreeLayerSection(section: CoverageSection): boolean {
-  return (
-    (section.anchors?.length ?? 0) > 0 || (section.modules?.length ?? 0) > 0
-  );
+  return (section.modules?.length ?? 0) > 0;
 }
 
 export type CoverageMap = {
@@ -71,6 +68,8 @@ export type CheatSheetMeta = {
   coverageMap?: CoverageMap;
   /** True when the planner returned more sections than the parser safety ceiling. */
   sectionsTruncated?: boolean;
+  /** Agent JSON parse retries during this generation (excludes the initial attempt). */
+  retrialCount?: number;
   /** Non-fatal issues (e.g. agent fallback sections). */
   warnings?: string[];
   phases: Array<{
@@ -94,7 +93,7 @@ const MAX_STRING_LENGTH = 8_000;
 export const MAX_SECTIONS_PER_SHEET = 1;
 export const MAX_COVERAGE_SECTIONS = 24;
 const MAX_MUST_INCLUDE_PER_SECTION = 16;
-const MAX_ANCHORS_PER_SECTION = 3;
+export const MAX_ANCHORS_PER_MODULE = 2;
 const MAX_MODULES_PER_SECTION = 5;
 const MAX_EDGES_PER_SECTION = 4;
 const MAX_MUST_COVER_PER_ANCHOR = 6;
@@ -291,44 +290,30 @@ function buildFallbackAnchorNode(anchor: AnchorKnowledge): RenderNode {
   };
 }
 
-function buildFallbackModuleMapNode(section: CoverageSection): RenderNode | null {
-  const linkedIds = new Set<string>();
-  for (const anchor of section.anchors ?? []) {
-    for (const id of anchor.linkedModules ?? []) {
-      linkedIds.add(id);
-    }
+function buildFallbackModuleNode(module: ModuleNode): RenderNode {
+  const children: RenderNode[] = [];
+  for (const anchor of (module.anchors ?? []).slice(0, MAX_ANCHORS_PER_MODULE)) {
+    children.push(buildFallbackAnchorNode(anchor));
   }
-
-  const nodes = (section.modules ?? [])
-    .slice(0, MAX_MODULES_PER_SECTION)
-    .map((node) => ({
-      id: node.id,
-      label: node.label.slice(0, 80),
-      ...(node.hint ? { hint: node.hint.slice(0, 40) } : {}),
-      ...(node.group ? { group: node.group.slice(0, 40) } : {}),
-      ...(linkedIds.has(node.id) ? { highlighted: true } : {}),
-    }));
-
-  if (nodes.length === 0) {
-    return null;
-  }
-
-  const edges = (section.edges ?? [])
-    .slice(0, MAX_EDGES_PER_SECTION)
-    .map((edge) => ({
-      from: edge.from,
-      to: edge.to,
-      ...(edge.relation ? { relation: edge.relation } : {}),
-    }));
 
   return {
-    kind: "moduleMap",
+    kind: "module",
     props: {
-      layout: "cluster-flow",
-      nodes,
-      ...(edges.length > 0 ? { edges } : {}),
+      id: module.id,
+      label: module.label.slice(0, 80),
+      ...(module.hint ? { hint: module.hint.slice(0, 40) } : {}),
+      ...(module.group ? { group: module.group.slice(0, 40) } : {}),
     },
+    ...(children.length > 0 ? { children } : {}),
   };
+}
+
+function serializeModuleEdges(edges: ModuleEdge[]): Record<string, unknown>[] {
+  return edges.slice(0, MAX_EDGES_PER_SECTION).map((edge) => ({
+    from: edge.from,
+    to: edge.to,
+    ...(edge.relation ? { relation: edge.relation } : {}),
+  }));
 }
 
 /** Deterministic section when the agent returns truncated or invalid JSON. */
@@ -344,13 +329,8 @@ export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
   }
 
   if (hasThreeLayerSection(section)) {
-    for (const anchor of (section.anchors ?? []).slice(0, MAX_ANCHORS_PER_SECTION)) {
-      children.push(buildFallbackAnchorNode(anchor));
-    }
-
-    const moduleMap = buildFallbackModuleMapNode(section);
-    if (moduleMap) {
-      children.push(moduleMap);
+    for (const module of (section.modules ?? []).slice(0, MAX_MODULES_PER_SECTION)) {
+      children.push(buildFallbackModuleNode(module));
     }
 
     if (children.length === 0) {
@@ -360,9 +340,15 @@ export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
       });
     }
 
+    const edges = section.edges ?? [];
     return {
       kind: "section",
-      props: { title },
+      props: {
+        title,
+        ...(edges.length > 0
+          ? { moduleEdges: serializeModuleEdges(edges) }
+          : {}),
+      },
       layout: { density: section.density ?? "compact" },
       children,
     };
@@ -581,13 +567,53 @@ const VALID_EDGE_RELATIONS = new Set([
   "part-of",
 ]);
 
-function parseAnchorKnowledgeList(raw: unknown): AnchorKnowledge[] {
+type LegacyAnchorKnowledge = AnchorKnowledge & {
+  linkedModules?: string[];
+};
+
+function parseAnchorKnowledgeList(
+  raw: unknown,
+  maxCount = MAX_ANCHORS_PER_MODULE,
+): AnchorKnowledge[] {
   if (!Array.isArray(raw)) {
     return [];
   }
 
   const anchors: AnchorKnowledge[] = [];
-  for (const item of raw.slice(0, MAX_ANCHORS_PER_SECTION)) {
+  for (const item of raw.slice(0, maxCount)) {
+    if (!isPlainObject(item)) continue;
+    if (
+      typeof item.id !== "string" ||
+      typeof item.label !== "string" ||
+      typeof item.teachGoal !== "string"
+    ) {
+      continue;
+    }
+
+    const mustCover = Array.isArray(item.mustCover)
+      ? item.mustCover
+          .filter((entry): entry is string => typeof entry === "string")
+          .slice(0, MAX_MUST_COVER_PER_ANCHOR)
+      : [];
+
+    anchors.push({
+      id: item.id,
+      label: item.label,
+      teachGoal: item.teachGoal,
+      mustCover,
+    });
+  }
+
+  return anchors;
+}
+
+function parseLegacyAnchorList(raw: unknown): LegacyAnchorKnowledge[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  const anchors: LegacyAnchorKnowledge[] = [];
+  for (const item of raw.slice(0, MAX_MODULES_PER_SECTION * MAX_ANCHORS_PER_MODULE)) {
     if (!isPlainObject(item)) continue;
     if (
       typeof item.id !== "string" ||
@@ -618,13 +644,71 @@ function parseAnchorKnowledgeList(raw: unknown): AnchorKnowledge[] {
       label: item.label,
       teachGoal: item.teachGoal,
       mustCover,
-      ...(linkedModules && linkedModules.length > 0
-        ? { linkedModules }
-        : {}),
+      ...(linkedModules && linkedModules.length > 0 ? { linkedModules } : {}),
     });
   }
 
   return anchors;
+}
+
+function distributeLegacySectionAnchors(
+  modules: ModuleNode[],
+  legacyAnchors: LegacyAnchorKnowledge[],
+): ModuleNode[] {
+  if (legacyAnchors.length === 0) {
+    return modules;
+  }
+
+  const result: ModuleNode[] = modules.map((module) => ({
+    ...module,
+    anchors: [...(module.anchors ?? [])],
+  }));
+
+  if (result.length === 0) {
+    return [
+      {
+        id: "overview",
+        label: "Overview",
+        anchors: legacyAnchors
+          .slice(0, MAX_ANCHORS_PER_MODULE)
+          .map(({ linkedModules: _, ...anchor }) => anchor),
+      },
+    ];
+  }
+
+  const unassigned: LegacyAnchorKnowledge[] = [];
+
+  for (const anchor of legacyAnchors) {
+    const linked = anchor.linkedModules ?? [];
+    let placed = false;
+
+    for (const id of linked) {
+      const target = result.find((module) => module.id === id);
+      if (!target) continue;
+      target.anchors ??= [];
+      if (target.anchors.length >= MAX_ANCHORS_PER_MODULE) continue;
+      const { linkedModules: _, ...rest } = anchor;
+      target.anchors.push(rest);
+      placed = true;
+    }
+
+    if (!placed) {
+      unassigned.push(anchor);
+    }
+  }
+
+  for (const anchor of unassigned) {
+    const target =
+      result.find(
+        (module) => (module.anchors?.length ?? 0) < MAX_ANCHORS_PER_MODULE,
+      ) ?? result[0];
+    target.anchors ??= [];
+    if (target.anchors.length >= MAX_ANCHORS_PER_MODULE) continue;
+    const { linkedModules: _, ...rest } = anchor;
+    target.anchors.push(rest);
+  }
+
+  return result;
 }
 
 function parseModuleNodeList(raw: unknown, legacyRaw?: unknown): ModuleNode[] {
@@ -644,11 +728,13 @@ function parseModuleNodeList(raw: unknown, legacyRaw?: unknown): ModuleNode[] {
       continue;
     }
 
+    const anchors = parseAnchorKnowledgeList(item.anchors);
     nodes.push({
       id: item.id,
       label: item.label,
       ...(typeof item.hint === "string" ? { hint: item.hint.slice(0, 40) } : {}),
       ...(typeof item.group === "string" ? { group: item.group.slice(0, 40) } : {}),
+      ...(anchors.length > 0 ? { anchors } : {}),
     });
   }
 
@@ -715,8 +801,11 @@ export function parseCoverageMap(
           .slice(0, MAX_MUST_INCLUDE_PER_SECTION)
       : [];
 
-    const anchors = parseAnchorKnowledgeList(section.anchors);
-    const modules = parseModuleNodeList(section.modules, section.subtopics);
+    const legacyAnchors = parseLegacyAnchorList(section.anchors);
+    let modules = parseModuleNodeList(section.modules, section.subtopics);
+    if (legacyAnchors.length > 0) {
+      modules = distributeLegacySectionAnchors(modules, legacyAnchors);
+    }
     const edges = parseModuleEdgeList(section.edges);
 
     const parsed: CoverageSection = {
@@ -730,9 +819,6 @@ export function parseCoverageMap(
       order: typeof section.order === "number" ? section.order : undefined,
     };
 
-    if (anchors.length > 0) {
-      parsed.anchors = anchors;
-    }
     if (modules.length > 0) {
       parsed.modules = modules;
     }

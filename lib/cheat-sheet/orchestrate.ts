@@ -31,27 +31,27 @@ const WRITER_CONCURRENCY = 2;
 
 const JSON_RETRY_SUFFIX = `
 
-IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. The coverage map must have exactly one section with 1–3 anchors and 3–5 modules.`;
+IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. The coverage map must have exactly one section with 3–5 modules, each with 1–2 anchors. No section-level anchors.`;
 
 const SECTION_WRITER_RETRY_SUFFIX = `
 
 IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE compact three-layer section subtree:
-- Max 6 children: one text (goal), up to 2 anchor nodes, one moduleMap.
-- Each anchor: label + teachGoal props, one list or table child covering mustCover.
-- moduleMap: nodes from modules only, no explanatory text in hints.
+- Max 6 children: one text (goal) + up to 5 module nodes with nested anchors.
+- Each module: id, label props + 1–2 anchor children (list or table covering mustCover).
+- Put moduleEdges in section props when edges exist.
 - Keep strings under 120 characters; valid JSON only.`;
 
 const SECTION_WRITER_RETRY_SUFFIX_STRICT = `
 
 CRITICAL: JSON must be under 3000 characters total. Smallest valid three-layer section:
-- text (goal) + one anchor (list child) + moduleMap (nodes array only).
+- text (goal) + one module with one anchor (list child).
 - No code blocks. props.title: short label only.
 - Valid JSON only.`;
 
 const SECTION_WRITER_TEMPLATE_SUFFIX = `
 
 Return ONLY this JSON shape (fill in; stay under 2500 characters total):
-{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"anchor","props":{"id":"a1","label":"ANCHOR_LABEL","teachGoal":"TEACH_GOAL"},"children":[{"kind":"list","props":{"items":["item1","item2"]}}]},{"kind":"moduleMap","props":{"layout":"cluster-flow","nodes":[{"id":"m1","label":"Module name","group":"Group"}]}}]}`;
+{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"module","props":{"id":"m1","label":"Module name","group":"Group"},"children":[{"kind":"anchor","props":{"id":"a1","label":"ANCHOR_LABEL","teachGoal":"TEACH_GOAL"},"children":[{"kind":"list","props":{"items":["item1","item2"]}}]}]}]}`;
 
 function getApiKey(): string {
   const key = process.env.CURSOR_API_KEY;
@@ -119,6 +119,10 @@ async function runAgentPrompt(
   }
 }
 
+function recordRetrial(meta: CheatSheetMeta, count = 1): void {
+  meta.retrialCount = (meta.retrialCount ?? 0) + count;
+}
+
 function parseAgentJson(label: string, text: string): unknown {
   try {
     return extractJsonFromAgentText(text);
@@ -141,12 +145,14 @@ async function runAgentPromptForJson(
   try {
     return parseAgentJson(label, text);
   } catch (firstErr) {
+    recordRetrial(meta);
     const retryLabel = `${label} (json-retry)`;
     text = await runAgentPrompt(retryLabel, `${prompt}${retrySuffix}`, meta);
     try {
       return parseAgentJson(retryLabel, text);
     } catch (retryErr) {
       if (strictRetrySuffix) {
+        recordRetrial(meta);
         const strictLabel = `${label} (json-retry-strict)`;
         text = await runAgentPrompt(
           strictLabel,
@@ -174,15 +180,14 @@ function sectionPayloadForWriter(section: CoverageSection): CoverageSection {
     title: shortSectionTitle(section.title),
   };
 
-  if (section.anchors) {
-    payload.anchors = section.anchors.slice(0, 3).map((anchor) => ({
-      ...anchor,
-      mustCover: anchor.mustCover.slice(0, 6),
-    }));
-  }
-
   if (section.modules) {
-    payload.modules = section.modules.slice(0, 5);
+    payload.modules = section.modules.slice(0, 5).map((module) => ({
+      ...module,
+      anchors: module.anchors?.slice(0, 2).map((anchor) => ({
+        ...anchor,
+        mustCover: anchor.mustCover.slice(0, 6),
+      })),
+    }));
   }
 
   if (section.edges) {
@@ -218,7 +223,11 @@ async function runSectionWriter(
 
   let lastError = "unknown error";
 
-  for (const attempt of attempts) {
+  for (let index = 0; index < attempts.length; index += 1) {
+    if (index > 0) {
+      recordRetrial(meta);
+    }
+    const attempt = attempts[index]!;
     const text = await runAgentPrompt(attempt.label, attempt.prompt, meta);
     try {
       const raw = parseAgentJson(attempt.label, text);
@@ -272,6 +281,7 @@ export async function generateCheatSheet(
   const meta: CheatSheetMeta = {
     source: "agent",
     phases: [],
+    retrialCount: 0,
   };
 
   const [coveragePlaybook, writerPlaybook] = await Promise.all([
@@ -288,8 +298,8 @@ export async function generateCheatSheet(
 
   const parentContext = options.parentContext?.trim().slice(0, 500);
   const parentLine = parentContext
-    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the module topic below; select 1–3 anchors to teach at this drill level and split remaining coverage into 3–5 MECE modules. Do not repeat the entire parent survey unless needed for coherence.\n`
-    : "\nAt this root level, produce exactly one section. Select 1–3 anchors to teach now; split the topic into 3–5 MECE modules for drill navigation.\n";
+    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the module topic below; assign 1–2 anchors per module and split remaining coverage into 3–5 MECE child modules. No section-level anchors.\n`
+    : "\nAt this root level, produce exactly one section with goal framing only. Split the topic into 3–5 MECE modules; each module gets 1–2 anchors. No section-level anchors.\n";
 
   const plannerPrompt = `${coveragePlaybook}
 
@@ -328,7 +338,7 @@ Topic: ${coverageMap.topic}
 Sheet title: ${coverageMap.title}
 
 Write one RenderNode subtree for the section below. Return only that subtree JSON (no markdown fences, not an array).
-${threeLayer ? "Use the three-layer anatomy: text (goal) + anchor nodes (teach mustCover) + moduleMap (bare MECE modules)." : "Legacy section: use text + list/table from mustInclude."}
+${threeLayer ? "Use the three-layer anatomy: text (goal) + module nodes (each with 1–2 nested anchor children teaching mustCover). Only modules are drillable." : "Legacy section: use text + list/table from mustInclude."}
 Keep the subtree compact (max 6 children, short strings) so the JSON is complete in one response.
 
 Section:
