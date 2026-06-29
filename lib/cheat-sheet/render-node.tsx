@@ -5,6 +5,10 @@ import type { DrillSourceKind, DrillTarget } from "./navigation";
 import { normalizeDrillLabel } from "./navigation";
 import type { RenderNode } from "./render-contract";
 import { MathSpan, RichText } from "./math-render";
+import {
+  QUESTION_FRAME_LABELS,
+  QUESTION_FRAMES,
+} from "./playbook-content";
 
 export type { DrillTarget };
 
@@ -91,6 +95,12 @@ function moduleMapEdges(value: unknown): ModuleMapEdge[] {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const QUESTION_FRAME_ORDER = [...QUESTION_FRAMES];
+
+function isQuestionFrameGroup(group: string): boolean {
+  return (QUESTION_FRAMES as readonly string[]).includes(group);
 }
 
 const RELATION_LABELS: Record<string, string> = {
@@ -257,6 +267,31 @@ export function RenderNodeView({
     case "section": {
       const showTitle = props.title && props.hideTitle !== true;
       const moduleEdges = moduleMapEdges(props.moduleEdges);
+      const nonModules: RenderNode[] = [];
+      const modules: RenderNode[] = [];
+
+      for (const child of children) {
+        if (child.kind === "module") {
+          modules.push(child);
+        } else {
+          nonModules.push(child);
+        }
+      }
+
+      const modulesByFrame = new Map<string, RenderNode[]>();
+      const ungroupedModules: RenderNode[] = [];
+
+      for (const moduleNode of modules) {
+        const group = str(moduleNode.props?.group);
+        if (group && isQuestionFrameGroup(group)) {
+          const bucket = modulesByFrame.get(group) ?? [];
+          bucket.push(moduleNode);
+          modulesByFrame.set(group, bucket);
+        } else {
+          ungroupedModules.push(moduleNode);
+        }
+      }
+
       return (
         <section
           className={`flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 ${
@@ -271,13 +306,40 @@ export function RenderNodeView({
           {moduleEdges.length > 0 ? (
             <ModuleEdgeRow
               edges={moduleEdges}
-              modules={children.filter((child) => child.kind === "module")}
+              modules={modules}
               compact={compact}
             />
           ) : null}
           <div className="flex flex-col gap-2">
-            {children.map((child, i) => (
-              <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
+            {nonModules.map((child, i) => (
+              <RenderNodeView key={`pre-${i}`} node={child} depth={depth + 1} {...childProps} />
+            ))}
+            {QUESTION_FRAME_ORDER.map((frame) => {
+              const bucket = modulesByFrame.get(frame);
+              if (!bucket?.length) return null;
+              const frameLabel =
+                QUESTION_FRAME_LABELS[frame as keyof typeof QUESTION_FRAME_LABELS] ??
+                frame;
+              return (
+                <QuestionFrameBand key={frame} label={frameLabel} compact={compact}>
+                  {bucket.map((child, i) => (
+                    <RenderNodeView
+                      key={`${frame}-${i}`}
+                      node={child}
+                      depth={depth + 1}
+                      {...childProps}
+                    />
+                  ))}
+                </QuestionFrameBand>
+              );
+            })}
+            {ungroupedModules.map((child, i) => (
+              <RenderNodeView
+                key={`ungrouped-${i}`}
+                node={child}
+                depth={depth + 1}
+                {...childProps}
+              />
             ))}
           </div>
         </section>
@@ -288,6 +350,7 @@ export function RenderNodeView({
       const label = str(props.label);
       const hint = str(props.hint);
       const group = str(props.group);
+      const showGroupTag = Boolean(group) && !isQuestionFrameGroup(group);
       return (
         <div
           className={`rounded-lg border border-zinc-200/80 bg-white/80 p-3 dark:border-zinc-700 dark:bg-zinc-950/40 ${
@@ -305,14 +368,14 @@ export function RenderNodeView({
             >
               {label}
             </Drillable>
-            {group ? (
-              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                {group}
+            {hint ? (
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.65rem] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                {hint}
               </span>
             ) : null}
-            {hint ? (
-              <span className="text-[0.6rem] uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                {hint}
+            {showGroupTag ? (
+              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                {group}
               </span>
             ) : null}
           </div>
@@ -346,7 +409,7 @@ export function RenderNodeView({
               {label}
             </span>
             {teachGoal ? (
-              <p className="mt-0.5 text-[0.65rem] leading-snug text-zinc-500 dark:text-zinc-400">
+              <p className="mt-0.5 text-xs leading-snug text-zinc-600 dark:text-zinc-300">
                 <RichText text={teachGoal} />
               </p>
             ) : null}
@@ -493,6 +556,29 @@ export function RenderNodeView({
     default:
       return <FallbackNode node={node} />;
   }
+}
+
+function QuestionFrameBand({
+  label,
+  compact = false,
+  children,
+}: {
+  label: string;
+  compact?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className={`rounded-md border border-zinc-200/60 bg-white/50 p-2 dark:border-zinc-700/80 dark:bg-zinc-950/20 ${
+        compact ? "text-xs" : "text-sm"
+      }`}
+    >
+      <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+        {label}
+      </p>
+      <div className="flex flex-col gap-2">{children}</div>
+    </div>
+  );
 }
 
 function SheetHeader({ props }: { props: Record<string, unknown> }) {

@@ -31,27 +31,53 @@ const WRITER_CONCURRENCY = 2;
 
 const JSON_RETRY_SUFFIX = `
 
-IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. The coverage map must have exactly one section with 3–5 modules, each with 1–2 anchors. No section-level anchors.`;
+IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. The coverage map must have exactly one section with 3–5 modules (each with required group: What|How|When|Watch|Compare), plain-English question labels, and 1–2 anchors per module. No section-level anchors.`;
 
 const SECTION_WRITER_RETRY_SUFFIX = `
 
 IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE compact three-layer section subtree:
 - Max 6 children: one text (goal) + up to 5 module nodes with nested anchors.
-- Each module: id, label props + 1–2 anchor children (list or table covering mustCover).
+- Each module: id, label (plain question), group (What|How|When|Watch|Compare), optional hint (technical alias) + 1–2 anchor children (table with plain headers covering mustCover).
 - Put moduleEdges in section props when edges exist.
-- Keep strings under 120 characters; valid JSON only.`;
+- teachGoal = one-sentence direct answer; jargon only in table cells.
+- Valid JSON only.`;
 
 const SECTION_WRITER_RETRY_SUFFIX_STRICT = `
 
 CRITICAL: JSON must be under 3000 characters total. Smallest valid three-layer section:
-- text (goal) + one module with one anchor (list child).
-- No code blocks. props.title: short label only.
+- text (goal) + one module (group "How", label as a question) with one anchor (table child, headers ["Term", "Meaning"]).
+- No code blocks. props.title: short topic label only.
 - Valid JSON only.`;
 
 const SECTION_WRITER_TEMPLATE_SUFFIX = `
 
 Return ONLY this JSON shape (fill in; stay under 2500 characters total):
-{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"module","props":{"id":"m1","label":"Module name","group":"Group"},"children":[{"kind":"anchor","props":{"id":"a1","label":"ANCHOR_LABEL","teachGoal":"TEACH_GOAL"},"children":[{"kind":"list","props":{"items":["item1","item2"]}}]}]}]}`;
+{"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"module","props":{"id":"m1","label":"How do I do the main task?","hint":"alias","group":"How"},"children":[{"kind":"anchor","props":{"id":"a1","label":"Which step comes first?","teachGoal":"Start with the setup command."},"children":[{"kind":"table","props":{"headers":["Command","What it does"],"rows":[["cmd","outcome"]]}}]}]}]}`;
+
+function buildFramingBlock(audience?: string, depth?: string): string {
+  const audienceLine =
+    audience?.trim() ||
+    "Learner studying this topic for the first time; assume no insider vocabulary in titles.";
+
+  let depthLine =
+    "Balance question labels with compact tables; all five question frames (What, How, When, Watch, Compare) are eligible.";
+  switch (depth?.trim()) {
+    case "exam":
+      depthLine =
+        "Prioritize What, Compare, and Watch frames; tables emphasize triggers, distinctions, and common mistakes.";
+      break;
+    case "on-call":
+      depthLine =
+        "Prioritize How, When, and Watch frames; tables emphasize commands and decision rules.";
+      break;
+    default:
+      break;
+  }
+
+  return `Audience: ${audienceLine}
+Depth framing: ${depthLine}
+Labeling: module labels must be plain-English questions; group must be What|How|When|Watch|Compare; hint holds the technical alias only.`;
+}
 
 function getApiKey(): string {
   const key = process.env.CURSOR_API_KEY;
@@ -289,24 +315,20 @@ export async function generateCheatSheet(
     loadPlaybook("writer"),
   ]);
 
-  const constraints = [
-    options.audience ? `Audience: ${options.audience}` : null,
-    options.depth ? `Depth: ${options.depth}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const framingBlock = buildFramingBlock(options.audience, options.depth);
 
   const parentContext = options.parentContext?.trim().slice(0, 500);
   const parentLine = parentContext
-    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the module topic below; assign 1–2 anchors per module and split remaining coverage into 3–5 MECE child modules. No section-level anchors.\n`
-    : "\nAt this root level, produce exactly one section with goal framing only. Split the topic into 3–5 MECE modules; each module gets 1–2 anchors. No section-level anchors.\n";
+    ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the module topic below; assign 1–2 anchors per module and split remaining coverage into 3–5 question-framed child modules (group: What|How|When|Watch|Compare). No section-level anchors.\n`
+    : "\nAt this root level, produce exactly one section with goal framing only. Split the topic into 3–5 question-framed modules; each module gets a required group and 1–2 anchors with plain-English labels. No section-level anchors.\n";
 
   const plannerPrompt = `${coveragePlaybook}
 
 ---
 ${parentLine}
 Topic: ${options.topic}
-${constraints ? `\n${constraints}` : ""}
+
+${framingBlock}
 
 Return only the coverage map JSON.`;
 
@@ -337,9 +359,11 @@ Return only the coverage map JSON.`;
 Topic: ${coverageMap.topic}
 Sheet title: ${coverageMap.title}
 
+${framingBlock}
+
 Write one RenderNode subtree for the section below. Return only that subtree JSON (no markdown fences, not an array).
-${threeLayer ? "Use the three-layer anatomy: text (goal) + module nodes (each with 1–2 nested anchor children teaching mustCover). Only modules are drillable." : "Legacy section: use text + list/table from mustInclude."}
-Keep the subtree compact (max 6 children, short strings) so the JSON is complete in one response.
+${threeLayer ? "Use the three-layer anatomy: text (goal) + module nodes (each with 1–2 nested anchor children teaching mustCover). Module labels are plain questions; tables use plain-English headers. Only modules are drillable." : "Legacy section: use text + list/table from mustInclude."}
+Keep the subtree compact (max 6 children) so the JSON is complete in one response.
 
 Section:
 ${JSON.stringify(sectionPayloadForWriter(section), null, 2)}`;

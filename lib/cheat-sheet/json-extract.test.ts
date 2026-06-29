@@ -38,16 +38,22 @@ describe("findBalancedJsonEnd", () => {
 });
 
 describe("shortSectionTitle", () => {
-  it("strips parenthetical subtitles", () => {
+  it("preserves parenthetical context when under max length", () => {
     assert.equal(
       shortSectionTitle("Fixed Income (term structure, valuation)"),
-      "Fixed Income",
+      "Fixed Income (term structure, valuation)",
     );
+  });
+
+  it("truncates long titles without stripping parentheses", () => {
+    const long = "A".repeat(50) + " (extra context)";
+    assert.equal(shortSectionTitle(long, 48).endsWith("…"), true);
+    assert.equal(shortSectionTitle(long, 48).length, 48);
   });
 });
 
 describe("parseCoverageMap", () => {
-  it("parses modules with nested anchors", () => {
+  it("parses modules with nested anchors and question-frame groups", () => {
     const parsed = parseCoverageMap({
       topic: "Git rebase",
       title: "Git Rebase",
@@ -59,14 +65,14 @@ describe("parseCoverageMap", () => {
           modules: [
             {
               id: "m1",
-              label: "Everyday workflow",
-              group: "Core",
-              hint: "Start here",
+              label: "How do I rebase onto main?",
+              group: "How",
+              hint: "rebase",
               anchors: [
                 {
                   id: "a1",
-                  label: "What rebase does",
-                  teachGoal: "Replay commits",
+                  label: "Which command replays my branch?",
+                  teachGoal: "git rebase main replays your commits onto main.",
                   mustCover: ["git rebase main"],
                 },
               ],
@@ -81,9 +87,28 @@ describe("parseCoverageMap", () => {
     const section = parsed!.map.sections[0];
     assert.equal(parsed!.map.sections.length, 1);
     assert.equal(section.modules?.length, 1);
+    assert.equal(section.modules?.[0].group, "How");
     assert.equal(section.modules?.[0].anchors?.length, 1);
     assert.equal(section.edges?.length, 1);
     assert.equal((section as { anchors?: unknown }).anchors, undefined);
+  });
+
+  it("accepts standard question-frame group values", () => {
+    for (const group of ["What", "How", "When", "Watch", "Compare"]) {
+      const parsed = parseCoverageMap({
+        topic: "Test",
+        title: "Test",
+        sections: [
+          {
+            id: "main",
+            title: "Test",
+            goal: "Goal",
+            modules: [{ id: "m1", label: "Sample question?", group, anchors: [] }],
+          },
+        ],
+      });
+      assert.equal(parsed!.map.sections[0].modules?.[0].group, group);
+    }
   });
 
   it("migrates legacy section anchors into modules via linkedModules", () => {
@@ -187,18 +212,18 @@ describe("buildFallbackSectionNode", () => {
       modules: [
         {
           id: "m1",
-          label: "Everyday workflow",
-          group: "Core",
+          label: "How do I rebase onto main?",
+          group: "How",
           anchors: [
             {
               id: "a1",
-              label: "What rebase does",
+              label: "Which command replays my branch?",
               teachGoal: "Replay commits onto a new base",
               mustCover: ["git rebase main", "git fetch first"],
             },
           ],
         },
-        { id: "m2", label: "Recovery", group: "Recovery" },
+        { id: "m2", label: "What if rebase goes wrong?", group: "Watch" },
       ],
       edges: [{ from: "m1", to: "m2", relation: "leads-to" }],
     });
@@ -223,7 +248,7 @@ describe("buildFallbackSectionNode", () => {
       mustInclude: ["YTM", "duration", "credit spread"],
     });
     assert.equal(node.kind, "section");
-    assert.equal(node.props?.title, "Fixed Income");
+    assert.equal(node.props?.title, "Fixed Income (term structure)");
     assert.ok((node.children?.length ?? 0) >= 1);
     assert.equal(node.children?.some((c) => c.kind === "module"), false);
   });
@@ -313,6 +338,18 @@ describe("assembleCheatSheetTree", () => {
     );
     const section = tree.children?.[0]?.children?.[0];
     assert.equal(section?.props?.hideTitle, true);
+  });
+
+  it("uses section title as subtitle when it adds context beyond sheet title", () => {
+    const tree = assembleCheatSheetTree(
+      {
+        topic: "fixed income",
+        title: "Fixed Income — Quick Reference",
+        sections: [{ id: "main", title: "Fixed Income (term structure)", goal: "Goal" }],
+      },
+      [{ kind: "section", props: { title: "Fixed Income (term structure)" } }],
+    );
+    assert.equal(tree.props?.subtitle, "Fixed Income (term structure)");
   });
 
   it("uses only the first section when multiple nodes are passed", () => {

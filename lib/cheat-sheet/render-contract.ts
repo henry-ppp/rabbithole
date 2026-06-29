@@ -251,12 +251,19 @@ export function describeInvalidSectionOutput(raw: unknown): string {
   return `could not sanitize subtree with kind "${raw.kind}" (keys: ${keys})`;
 }
 
-/** Short label for props.title (strip parenthetical subtitles). */
+/** Display label for props.title; preserves parenthetical context, truncates only when over maxLen. */
 export function shortSectionTitle(title: string, maxLen = 48): string {
-  const paren = title.indexOf("(");
-  const base = paren > 0 ? title.slice(0, paren).trim() : title.trim();
-  if (base.length <= maxLen) return base;
-  return `${base.slice(0, maxLen - 1)}…`;
+  const trimmed = title.trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  return `${trimmed.slice(0, maxLen - 1)}…`;
+}
+
+function sheetSubtitle(coverageMap: CoverageMap): string {
+  const sectionTitle = coverageMap.sections[0]?.title?.trim();
+  if (sectionTitle && !titlesMatch(sectionTitle, coverageMap.title)) {
+    return sectionTitle;
+  }
+  return coverageMap.topic;
 }
 
 function buildFallbackAnchorNode(anchor: AnchorKnowledge): RenderNode {
@@ -508,7 +515,7 @@ export function assembleCheatSheetTree(
       kind: "sheet",
       props: {
         title: coverageMap.title,
-        subtitle: coverageMap.topic,
+        subtitle: sheetSubtitle(coverageMap),
       },
       children: [],
     };
@@ -537,7 +544,7 @@ export function assembleCheatSheetTree(
     kind: "sheet",
     props: {
       title: coverageMap.title,
-      subtitle: coverageMap.topic,
+      subtitle: sheetSubtitle(coverageMap),
     },
     children: [
       {
