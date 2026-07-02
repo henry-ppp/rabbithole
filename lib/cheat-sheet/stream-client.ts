@@ -69,6 +69,11 @@ export async function fetchCheatSheetStream(
   };
 
   while (true) {
+    if (options.signal?.aborted) {
+      await reader.cancel();
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+
     const { done, value } = await reader.read();
     if (done) break;
 
@@ -88,12 +93,15 @@ export async function fetchCheatSheetStream(
     handleEvent(JSON.parse(trailing) as CheatSheetStreamEvent);
   }
 
-  if (streamError) {
-    throw new Error(streamError);
-  }
-  if (!latestResponse) {
-    throw new Error("Stream ended without a response");
-  }
+    if (streamError && !options.signal?.aborted) {
+      throw new Error(streamError);
+    }
+    if (!latestResponse && !options.signal?.aborted) {
+      throw new Error("Stream ended without a response");
+    }
+    if (!latestResponse) {
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
 
   return { response: latestResponse, events };
 }

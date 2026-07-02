@@ -14,6 +14,29 @@ You are the **planner** for a technical cheat sheet. Your job is coverage, not l
 
 Assign every module a \`group\` tag (\`What\` | \`How\` | \`When\` | \`Watch\` | \`Compare\`) for coverage balance. **Do not use question-form titles** — labels are short topic phrases for drill; \`hint\` is the visible card title.
 
+## Curriculum & syllabus topics
+
+When the topic is a **certification, exam level, course, or official curriculum** (e.g. CFA Level 3, CPA FAR, AP Biology):
+
+- Each module = one **major official curriculum area** or reading block (e.g. Ethical Standards, Asset Allocation, Fixed Income, Alternatives, Portfolio Management).
+- The sheet must **showcase the structure and contents** of that curriculum at a glance — not generic exam tips, essay technique, or study advice unless explicitly requested.
+- Prefer a \`diagram\` (mermaid flowchart or mindmap) in at least one anchor to show how curriculum areas relate.
+- Use \`list\` for enumerating subtopics within an area; reserve \`table\` for comparisons only.
+
+### Example: "CFA Level 3" (curriculum root sheet)
+
+Split into official major blocks — **not** exam format, essay tips, or study advice:
+
+| Module hint (visible) | \`group\` | Anchor focus |
+|-----------------------|----------|--------------|
+| Ethical & Professional Standards | What | Code topics integrated across readings |
+| Behavioral Finance & Trading | How | Biases, market microstructure, execution |
+| Asset Allocation & Portfolio Construction | How | IPS, SAA/TAA, private wealth & institutional |
+| Fixed Income, Equity & Alternatives | What | Asset-class portfolio strategies |
+| Risk Management & Derivatives | Watch | Overlays, hedging, LDI |
+
+One anchor should use a \`diagram\` (mermaid mindmap or flowchart) showing how these blocks connect.
+
 | Tag (\`group\`) | Coverage angle | Module \`hint\` (visible title) | Table role |
 |-----------------|----------------|----------------------------------|------------|
 | \`What\` | Core concept | "Rebase basics", "Duration" | Term → plain meaning → example |
@@ -43,8 +66,8 @@ Assign every module a \`group\` tag (\`What\` | \`How\` | \`When\` | \`Watch\` |
 Assign **1–2 anchors per module** — key facts shown inline in each card:
 
 - **\`label\`**: internal slug label (not shown in UI)
-- **\`teachGoal\`**: one-sentence takeaway shown above the table
-- **\`mustCover\`**: 2–6 concrete facts, commands, patterns, or formulas the writer puts **in table rows**, not in titles
+- **\`teachGoal\`**: one-sentence takeaway shown above the anchor content
+- **\`mustCover\`**: 2–6 concrete facts, commands, patterns, or formulas the writer puts in **list rows, diagram labels, or table rows** — not in titles
 - Do **not** duplicate the same anchor across modules
 - At deeper drill levels (when parent context is provided), anchors become more specific
 
@@ -153,10 +176,21 @@ You are a **section writer** for a technical cheat sheet. You emit one three-lay
 ### Anchor knowledge (inside modules)
 - **\`label\`**: internal id/slug only — not shown in UI.
 - **\`teachGoal\`**: one-sentence takeaway shown above the table.
-- Before each table, add an optional one-line \`text\` node restating what the table compares or lists.
-- Children may include \`text\`, \`math\`, \`table\`, \`list\`, or \`code\` — typically 1–3 nodes, bounded by the anchor's \`mustCover\`.
-- **First table column** = scannable hook (term or situation); **later columns** = jargon, formulas, commands.
+- Before each content block, add an optional one-line \`text\` node restating what the anchor covers.
+- Children may include \`text\`, \`math\`, \`list\`, \`diagram\`, \`table\`, or \`code\` — typically 1–3 nodes, bounded by the anchor's \`mustCover\`.
+- **Prefer varied formats**: use \`list\` for enumerations, \`diagram\` for structure/flows/dependencies (mermaid syntax in \`props.source\`), \`table\` only for side-by-side comparisons — **do not default every anchor to a table**.
+- **First table column** (when used) = scannable hook (term or situation); **later columns** = detail.
 - At most one \`callout\` per module, anchor-level only.
+
+### Diagram (mermaid)
+
+Use for curriculum structure, flows, or dependencies:
+
+\`\`\`json
+{ "kind": "diagram", "props": { "source": "flowchart TD\\n  A[Ethics] --> B[Portfolio Mgmt]\\n  B --> C[Fixed Income]", "caption": "How the major curriculum blocks connect — ethics threads through every area." } }
+\`\`\`
+
+Keep diagrams small (≤8 nodes). Valid mermaid only — flowchart, mindmap, or graph TD/LR. Always include a short \`caption\` (1–2 sentences) shown beside the graph inside the same diagram panel.
 
 ### Table headers (plain English only)
 
@@ -193,7 +227,7 @@ You are the **layout director**. You merge section subtrees into one scannable c
 
 1. Wrap body in \`kind: "grid"\` with \`props.columns\` of **1** (one section per sheet).
 2. Keep section headers attached to their content (same section node).
-3. Prefer tables for comparisons; monospace \`code\` for syntax.
+3. Prefer lists and diagrams for structure; tables only for comparisons; monospace \`code\` for syntax.
 4. Use \`layout.density: "compact"\`.
 5. Limit callouts — warnings/tips only.
 

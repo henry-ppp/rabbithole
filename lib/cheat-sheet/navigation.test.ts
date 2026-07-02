@@ -125,4 +125,32 @@ describe("withSheetDisplayTitle", () => {
     const patched = withSheetDisplayTitle(stubResponse(), "Everyday workflow");
     assert.equal(patched.tree.props?.title, "Everyday workflow");
   });
+
+  it("hides nested section titles so only the sheet header shows", () => {
+    const response: CheatSheetResponse = {
+      tree: {
+        kind: "sheet",
+        props: { title: "Wrong" },
+        children: [
+          {
+            kind: "grid",
+            props: { columns: 1 },
+            children: [
+              {
+                kind: "section",
+                props: { title: "Agent title" },
+                children: [],
+              },
+            ],
+          },
+        ],
+      },
+      meta: { source: "fixture", phases: [] },
+    };
+    const patched = withSheetDisplayTitle(response, "Asset Allocation & Wealth Planning");
+    assert.equal(patched.tree.props?.title, "Asset Allocation & Wealth Planning");
+    const section = patched.tree.children?.[0]?.children?.[0];
+    assert.equal(section?.kind, "section");
+    assert.equal(section?.props?.hideTitle, true);
+  });
 });

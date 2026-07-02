@@ -82,8 +82,14 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         const emit: StreamEmit = (event) => {
+          if (request.signal.aborted) return;
           controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
         };
+
+        const onAbort = () => {
+          /* Client disconnected — pipeline checks request.signal and cancels agent runs. */
+        };
+        request.signal.addEventListener("abort", onAbort);
 
         try {
           if (parsed.useFixture) {
@@ -95,14 +101,19 @@ export async function POST(request: Request) {
                 audience: parsed.audience,
                 style: parsed.style,
                 parentContext: parsed.parentContext,
+                signal: request.signal,
               },
               emit,
             );
           }
         } catch (err) {
+          if (request.signal.aborted || (err instanceof Error && err.name === "AbortError")) {
+            return;
+          }
           const message = err instanceof Error ? err.message : "Generation failed";
           safeEmit(emit, { type: "error", message });
         } finally {
+          request.signal.removeEventListener("abort", onAbort);
           controller.close();
         }
       },

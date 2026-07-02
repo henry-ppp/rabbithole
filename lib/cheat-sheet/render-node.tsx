@@ -5,6 +5,7 @@ import type { DrillSourceKind, DrillTarget } from "./navigation";
 import { normalizeDrillLabel } from "./navigation";
 import type { RenderNode } from "./render-contract";
 import { MathSpan, RichText } from "./math-render";
+import { MermaidDiagram } from "@/components/cheat-sheet/MermaidDiagram";
 
 export type { DrillTarget };
 
@@ -34,6 +35,8 @@ const KNOWN_KINDS = new Set([
   "text",
   "list",
   "math",
+  "diagram",
+  "mermaid",
   "spacer",
 ]);
 
@@ -120,8 +123,11 @@ function moduleGridSpan(moduleNode: RenderNode): 1 | 2 {
     const anchor = anchors[0];
     const childCount = anchor.children?.length ?? 0;
     const table = anchor.children?.find((child) => child.kind === "table");
+    const diagram = anchor.children?.find(
+      (child) => child.kind === "diagram" || child.kind === "mermaid",
+    );
     const rows = tableRows(table?.props?.rows);
-    if (childCount > 2 || rows.length > 3) {
+    if (diagram || childCount > 2 || rows.length > 3) {
       return 2;
     }
   }
@@ -305,18 +311,17 @@ export function RenderNodeView({
   }
 
   switch (kind) {
-    case "sheet":
+    case "sheet": {
+      const sheetTitle = str(props.title);
       return (
         <article className="cheat-sheet-root flex flex-col gap-6 overflow-hidden p-10">
-          {children.length > 0 ? (
-            children.map((child, i) => (
-              <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
-            ))
-          ) : (
-            <SheetHeader props={props} />
-          )}
+          {sheetTitle ? <SheetHeader props={props} /> : null}
+          {children.map((child, i) => (
+            <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
+          ))}
         </article>
       );
+    }
 
     case "title":
       return <SheetHeader props={props} />;
@@ -552,6 +557,21 @@ export function RenderNodeView({
         <MathSpan
           latex={str(props.latex)}
           display={props.display !== false}
+        />
+      );
+
+    case "diagram":
+    case "mermaid":
+      return (
+        <MermaidDiagram
+          source={str(props.source) || str(props.content)}
+          caption={
+            str(props.caption) ||
+            str(props.note) ||
+            str(props.explain) ||
+            str(props.description)
+          }
+          compact={compact}
         />
       );
 

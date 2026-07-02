@@ -3,7 +3,6 @@
 import { PanZoomViewport } from "@/components/cheat-sheet/PanZoomViewport";
 import { RoadmapFlowView } from "@/components/cheat-sheet/RoadmapFlowView";
 import {
-  GenerateButtonSpinner,
   GenerationLoader,
 } from "@/components/cheat-sheet/GenerationLoader";
 import type { CheatSheetResponse } from "@/lib/cheat-sheet/render-contract";
@@ -81,6 +80,12 @@ export default function CheatSheetPage() {
 
   const applyResponse = useCallback((json: CheatSheetResponse) => {
     setWarnings(json.meta?.warnings ?? []);
+  }, []);
+
+  const stopGeneration = useCallback(() => {
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setLoading(false);
   }, []);
 
   const runStreamingGeneration = useCallback(
@@ -389,11 +394,15 @@ export default function CheatSheetPage() {
 
         <button
           type="button"
-          disabled={loading || !topic.trim()}
-          onClick={() => runRootGeneration(false)}
-          className="inline-flex h-9 min-w-[5.75rem] shrink-0 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm transition-opacity disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+          disabled={!loading && !topic.trim()}
+          onClick={() => (loading ? stopGeneration() : runRootGeneration(false))}
+          className={`inline-flex h-9 min-w-[5.75rem] shrink-0 items-center justify-center rounded-full px-4 text-sm font-medium shadow-sm transition-opacity disabled:opacity-40 ${
+            loading
+              ? "border border-zinc-300 bg-white text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+              : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+          }`}
         >
-          {loading ? <GenerateButtonSpinner /> : "Generate"}
+          {loading ? "Stop" : "Generate"}
         </button>
       </header>
 

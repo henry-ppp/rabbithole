@@ -2,10 +2,10 @@
 
 import {
   useCallback,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
-  type WheelEvent,
 } from "react";
 import { CanvasControls } from "@/components/cheat-sheet/CanvasToolbar";
 
@@ -104,20 +104,6 @@ export function PanZoomViewport({
     [],
   );
 
-  const onWheel = useCallback(
-    (event: WheelEvent<HTMLDivElement>) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const anchor = containerPointFromEvent(event.clientX, event.clientY);
-      if (!anchor) return;
-
-      const factor = wheelScaleFactor(event.deltaY, event.deltaMode);
-      zoomTo((s) => s * factor, anchor);
-    },
-    [containerPointFromEvent, zoomTo],
-  );
-
   const onPointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
@@ -185,12 +171,33 @@ export function PanZoomViewport({
     [zoomTo],
   );
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onWheelNative = (event: WheelEvent) => {
+      if (!container.contains(event.target as Node)) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const anchor = containerPointFromEvent(event.clientX, event.clientY);
+      if (!anchor) return;
+
+      const factor = wheelScaleFactor(event.deltaY, event.deltaMode);
+      zoomTo((s) => s * factor, anchor);
+    };
+
+    window.addEventListener("wheel", onWheelNative, { passive: false, capture: true });
+    return () =>
+      window.removeEventListener("wheel", onWheelNative, { capture: true });
+  }, [containerPointFromEvent, zoomTo]);
+
   return (
     <div className={`relative min-h-0 flex-1 ${className}`}>
       <div
         ref={containerRef}
         className="relative h-full cursor-grab touch-none select-none overflow-hidden bg-zinc-100 active:cursor-grabbing dark:bg-zinc-950 [background-image:radial-gradient(circle_at_1px_1px,rgba(0,0,0,0.045)_1px,transparent_0)] [background-size:24px_24px]"
-        onWheel={onWheel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

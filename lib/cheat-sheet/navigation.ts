@@ -1,4 +1,4 @@
-import type { CheatSheetResponse } from "./render-contract";
+import type { CheatSheetResponse, RenderNode } from "./render-contract";
 
 export const MAX_NAV_DEPTH = 8;
 export const MAX_TOPIC_LENGTH = 200;
@@ -110,6 +110,24 @@ export function resolveFrameLabel(target: DrillTarget): string {
   return normalizeDrillLabel(target.label) || target.label.slice(0, 40);
 }
 
+/** Hide agent section headings so the sheet header is the single visible title. */
+function suppressNestedSectionTitles(node: RenderNode): RenderNode {
+  if (node.kind === "section") {
+    return {
+      ...node,
+      props: { ...node.props, hideTitle: true },
+      children: node.children?.map(suppressNestedSectionTitles),
+    };
+  }
+  if (node.children?.length) {
+    return {
+      ...node,
+      children: node.children.map(suppressNestedSectionTitles),
+    };
+  }
+  return node;
+}
+
 /** Force the sheet header to match the clicked module title on drill-down pages. */
 export function withSheetDisplayTitle(
   response: CheatSheetResponse,
@@ -120,12 +138,12 @@ export function withSheetDisplayTitle(
 
   return {
     ...response,
-    tree: {
+    tree: suppressNestedSectionTitles({
       ...response.tree,
       props: {
         ...response.tree.props,
         title: normalized,
       },
-    },
+    }),
   };
 }
