@@ -22,7 +22,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
 }
 
 /* Cheat sheet artboard is always paper-white (readable) regardless of OS theme. */
@@ -30,6 +30,58 @@ body {
   color-scheme: light;
   background-color: #ffffff !important;
   color: #18181b !important;
+  font-feature-settings: "ss01", "cv01";
+  -webkit-font-smoothing: antialiased;
+}
+
+.cheat-sheet-artboard .module-panel {
+  border-width: 1px;
+  border-style: solid;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 0 0 1px rgba(15, 23, 42, 0.02);
+  transition: box-shadow 0.15s ease;
+}
+
+.cheat-sheet-artboard .module-panel:hover {
+  box-shadow:
+    0 4px 12px rgba(15, 23, 42, 0.06),
+    0 0 0 1px rgba(15, 23, 42, 0.03);
+}
+
+.cheat-sheet-artboard .module-panel--a {
+  background-color: #eff6ff !important;
+  border-color: rgba(147, 197, 253, 0.65) !important;
+}
+
+.cheat-sheet-artboard .module-panel--b {
+  background-color: #fffbeb !important;
+  border-color: rgba(253, 224, 71, 0.55) !important;
+}
+
+.cheat-sheet-artboard .cheat-sheet-table {
+  overflow: hidden;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.cheat-sheet-artboard .cheat-sheet-table th {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #71717a;
+  background: rgba(15, 23, 42, 0.03);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.cheat-sheet-artboard .cheat-sheet-table td {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  border-top: 1px solid rgba(15, 23, 42, 0.05);
 }
 
 @media (prefers-color-scheme: dark) {

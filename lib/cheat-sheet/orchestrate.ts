@@ -62,8 +62,8 @@ const SECTION_WRITER_RETRY_SUFFIX = `
 
 IMPORTANT: Your previous response was invalid or truncated JSON. Return ONE compact three-layer section subtree:
 - Max 6 children: one text (goal) + up to 5 module nodes with nested anchors.
-- Each module: id, label (plain question), group (What|How|When|Watch|Compare), optional hint (technical alias) + 1–2 anchor children (table with plain headers covering mustCover).
-- Put moduleEdges in section props when edges exist.
+- Each module: id, label (drill topic phrase), group (What|How|When|Watch|Compare), hint (short visible title, ≤40 chars) + 1–2 anchor children (teachGoal + table covering mustCover).
+- Do not emit moduleEdges or relationship rows.
 - teachGoal = one-sentence direct answer; jargon only in table cells.
 - Valid JSON only.`;
 

@@ -5,9 +5,11 @@ import {
   cacheKey,
   canDrillDeeper,
   codeDrillLabel,
-  composeChildTopic,
-  createFrame,
+  resolveFrameLabel,
+  withSheetDisplayTitle,
   normalizeDrillLabel,
+  createFrame,
+  composeChildTopic,
   truncateTopic,
 } from "./navigation";
 import type { CheatSheetFrame } from "./navigation";
@@ -102,5 +104,25 @@ describe("canDrillDeeper", () => {
 describe("codeDrillLabel", () => {
   it("uses first line up to 80 chars", () => {
     assert.equal(codeDrillLabel("git rebase -i HEAD~3\nmore"), "git rebase -i HEAD~3");
+  });
+});
+
+describe("resolveFrameLabel", () => {
+  it("prefers displayLabel over drill label", () => {
+    assert.equal(
+      resolveFrameLabel({
+        label: "How do I squash commits?",
+        displayLabel: "Interactive rebase",
+        sourceKind: "module",
+      }),
+      "Interactive rebase",
+    );
+  });
+});
+
+describe("withSheetDisplayTitle", () => {
+  it("overrides sheet title with clicked module title", () => {
+    const patched = withSheetDisplayTitle(stubResponse(), "Everyday workflow");
+    assert.equal(patched.tree.props?.title, "Everyday workflow");
   });
 });

@@ -230,7 +230,7 @@ describe("buildFallbackSectionNode", () => {
 
     assert.equal(node.kind, "section");
     assert.equal(node.props?.title, "Git rebase");
-    assert.ok(Array.isArray(node.props?.moduleEdges));
+    assert.equal(node.props?.moduleEdges, undefined);
     const kinds = (node.children ?? []).map((child) => child.kind);
     assert.ok(kinds.includes("text"));
     assert.ok(kinds.includes("module"));

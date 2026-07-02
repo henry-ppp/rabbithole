@@ -18,8 +18,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
           modules: [
             {
               id: "what-is",
-              label: "What does rebase do?",
-              hint: "rebase",
+              label: "Rebase fundamentals",
+              hint: "Rebase basics",
               group: "What",
               anchors: [
                 {
@@ -46,8 +46,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
             },
             {
               id: "everyday",
-              label: "How do I rebase day to day?",
-              hint: "workflow",
+              label: "Everyday rebase workflow",
+              hint: "Everyday workflow",
               group: "How",
               anchors: [
                 {
@@ -60,8 +60,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
             },
             {
               id: "interactive",
-              label: "How do I rewrite commit history?",
-              hint: "interactive",
+              label: "Interactive history rewrite",
+              hint: "Interactive rebase",
               group: "How",
               anchors: [
                 {
@@ -74,8 +74,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
             },
             {
               id: "recovery",
-              label: "What if rebase goes wrong?",
-              hint: "conflicts",
+              label: "Rebase recovery",
+              hint: "Conflicts & recovery",
               group: "Watch",
               anchors: [
                 {
@@ -88,8 +88,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
             },
             {
               id: "advanced",
-              label: "How do I transplant commits?",
-              hint: "--onto",
+              label: "Transplant commits with --onto",
+              hint: "Rebase --onto",
               group: "How",
               anchors: [
                 {
@@ -101,7 +101,6 @@ export const gitRebaseFixture: CheatSheetResponse = {
               ],
             },
           ],
-          edges: [{ from: "recovery", to: "advanced", relation: "leads-to" }],
         },
       ],
     },
@@ -119,9 +118,6 @@ export const gitRebaseFixture: CheatSheetResponse = {
             props: {
               title: "Git rebase",
               hideTitle: true,
-              moduleEdges: [
-                { from: "recovery", to: "advanced", relation: "leads-to" },
-              ],
             },
             layout: { column: 0, density: "compact", span: 1 },
             children: [
@@ -136,8 +132,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
                 kind: "module",
                 props: {
                   id: "what-is",
-                  label: "What does rebase do?",
-                  hint: "rebase",
+                  label: "Rebase fundamentals",
+                  hint: "Rebase basics",
                   group: "What",
                 },
                 children: [
@@ -189,8 +185,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
                 kind: "module",
                 props: {
                   id: "everyday",
-                  label: "How do I rebase day to day?",
-                  hint: "workflow",
+                  label: "Everyday rebase workflow",
+                  hint: "Everyday workflow",
                   group: "How",
                 },
                 children: [
@@ -220,8 +216,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
                 kind: "module",
                 props: {
                   id: "interactive",
-                  label: "How do I rewrite commit history?",
-                  hint: "interactive",
+                  label: "Interactive history rewrite",
+                  hint: "Interactive rebase",
                   group: "How",
                 },
                 children: [
@@ -257,8 +253,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
                 kind: "module",
                 props: {
                   id: "recovery",
-                  label: "What if rebase goes wrong?",
-                  hint: "conflicts",
+                  label: "Rebase recovery",
+                  hint: "Conflicts & recovery",
                   group: "Watch",
                 },
                 children: [
@@ -289,8 +285,8 @@ export const gitRebaseFixture: CheatSheetResponse = {
                 kind: "module",
                 props: {
                   id: "advanced",
-                  label: "How do I transplant commits?",
-                  hint: "--onto",
+                  label: "Transplant commits with --onto",
+                  hint: "Rebase --onto",
                   group: "How",
                 },
                 children: [

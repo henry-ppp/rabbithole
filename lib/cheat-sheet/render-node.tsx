@@ -1,20 +1,17 @@
 "use client";
 
-import { useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
+import { Fragment, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import type { DrillSourceKind, DrillTarget } from "./navigation";
 import { normalizeDrillLabel } from "./navigation";
 import type { RenderNode } from "./render-contract";
 import { MathSpan, RichText } from "./math-render";
-import {
-  QUESTION_FRAME_LABELS,
-  QUESTION_FRAMES,
-} from "./playbook-content";
 
 export type { DrillTarget };
 
 type RenderNodeProps = {
   node: RenderNode;
   depth?: number;
+  moduleTintIndex?: number;
   onDrill?: (target: DrillTarget) => void;
   drilling?: boolean;
   isStreamingSkeleton?: boolean;
@@ -100,24 +97,46 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const QUESTION_FRAME_ORDER = [...QUESTION_FRAMES];
-
-function isQuestionFrameGroup(group: string): boolean {
-  return (QUESTION_FRAMES as readonly string[]).includes(group);
+function moduleDisplayTitle(label: string, hint: string): string {
+  const trimmedHint = hint.trim();
+  if (trimmedHint) {
+    return trimmedHint;
+  }
+  return label.replace(/\?+$/, "").trim();
 }
 
-const RELATION_LABELS: Record<string, string> = {
-  requires: "requires",
-  "leads-to": "leads to",
-  "builds-on": "builds on",
-  contrasts: "contrasts",
-  "part-of": "part of",
-};
+function moduleGridSpan(moduleNode: RenderNode): 1 | 2 {
+  const layoutSpan = moduleNode.layout?.span;
+  if (layoutSpan !== undefined && layoutSpan >= 2) {
+    return 2;
+  }
 
-type CollapsibleModuleProps = {
+  const anchors = (moduleNode.children ?? []).filter((child) => child.kind === "anchor");
+  if (anchors.length >= 2) {
+    return 2;
+  }
+
+  if (anchors.length === 1) {
+    const anchor = anchors[0];
+    const childCount = anchor.children?.length ?? 0;
+    const table = anchor.children?.find((child) => child.kind === "table");
+    const rows = tableRows(table?.props?.rows);
+    if (childCount > 2 || rows.length > 3) {
+      return 2;
+    }
+  }
+
+  return 1;
+}
+
+function moduleSurfaceClass(tintIndex: number): string {
+  return tintIndex % 2 === 0 ? "module-panel module-panel--a" : "module-panel module-panel--b";
+}
+
+type ModulePanelProps = {
   label: string;
   hint: string;
-  group: string;
+  tintIndex?: number;
   onDrill?: (target: DrillTarget) => void;
   drilling?: boolean;
   compact?: boolean;
@@ -125,77 +144,54 @@ type CollapsibleModuleProps = {
   children: ReactNode;
 };
 
-function CollapsibleModule({
+function ModulePanel({
   label,
   hint,
-  group,
+  tintIndex = 0,
   onDrill,
   drilling,
   compact,
   isStreamingSkeleton,
   children,
-}: CollapsibleModuleProps) {
-  const [expanded, setExpanded] = useState(false);
-  const showGroupTag = Boolean(group) && !isQuestionFrameGroup(group);
-  const hasChildren = Array.isArray(children) ? (children as ReactNode[]).length > 0 : Boolean(children);
+}: ModulePanelProps) {
+  const title = moduleDisplayTitle(label, hint);
+  const childList = Array.isArray(children) ? (children as ReactNode[]) : [children];
+  const hasChildren = childList.some(Boolean);
 
   return (
     <div
       className={[
-        "rounded-lg border border-zinc-200/80 bg-white/80 dark:border-zinc-700 dark:bg-zinc-950/40",
+        "flex h-full flex-col rounded-xl p-4",
+        moduleSurfaceClass(tintIndex),
         compact ? "text-xs" : "text-sm",
         isStreamingSkeleton ? "animate-pulse" : "",
       ]
         .filter(Boolean)
         .join(" ")}
     >
-      <div className="flex items-start gap-1.5 p-3">
-        {hasChildren ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((open) => !open)}
-            className="mt-0.5 shrink-0 rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
-            aria-expanded={expanded}
-            aria-label={expanded ? "Collapse module" : "Expand module"}
-          >
-            <span
-              className={`inline-block text-xs transition-transform ${expanded ? "rotate-90" : ""}`}
-              aria-hidden
-            >
-              ›
-            </span>
-          </button>
-        ) : (
-          <span className="w-5 shrink-0" aria-hidden />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <Drillable
-              label={label}
-              sourceKind="module"
-              onDrill={onDrill}
-              drilling={drilling}
-              as="span"
-              className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
-            >
-              {label}
-            </Drillable>
-            {hint ? (
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.65rem] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                {hint}
-              </span>
-            ) : null}
-            {showGroupTag ? (
-              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                {group}
-              </span>
-            ) : null}
-          </div>
-        </div>
-      </div>
-      {expanded && hasChildren ? (
-        <div className="flex flex-col gap-2 border-t border-zinc-100 px-3 pb-3 pt-2 dark:border-zinc-800">
-          {children}
+      <Drillable
+        label={label}
+        displayLabel={title}
+        sourceKind="module"
+        onDrill={onDrill}
+        drilling={drilling}
+        as="span"
+        className="mb-3 block text-[0.8125rem] font-semibold tracking-tight text-zinc-900 dark:text-zinc-50"
+      >
+        {title}
+      </Drillable>
+      {hasChildren ? (
+        <div className="flex flex-1 flex-col gap-3">
+          {childList.map((child, index) =>
+            child ? (
+              <Fragment key={index}>
+                {index > 0 ? (
+                  <hr className="border-zinc-900/5 dark:border-zinc-100/10" />
+                ) : null}
+                {child}
+              </Fragment>
+            ) : null,
+          )}
         </div>
       ) : null}
     </div>
@@ -204,6 +200,7 @@ function CollapsibleModule({
 
 type DrillableProps = {
   label: string;
+  displayLabel?: string;
   sourceKind: DrillSourceKind;
   onDrill?: (target: DrillTarget) => void;
   drilling?: boolean;
@@ -214,6 +211,7 @@ type DrillableProps = {
 
 function Drillable({
   label,
+  displayLabel,
   sourceKind,
   onDrill,
   drilling = false,
@@ -232,13 +230,17 @@ function Drillable({
   const handleClick = (event: MouseEvent) => {
     if (!interactive || !onDrill) return;
     event.stopPropagation();
-    onDrill({ label: normalized, sourceKind });
+    onDrill({
+      label: normalized,
+      displayLabel: displayLabel?.trim() || undefined,
+      sourceKind,
+    });
   };
 
   const sharedClass = [
     className,
     interactive
-      ? "cursor-pointer rounded-sm underline decoration-transparent decoration-1 underline-offset-2 transition-colors hover:bg-violet-100/80 hover:decoration-violet-500 dark:hover:bg-violet-950/40 dark:hover:decoration-violet-400"
+      ? "cursor-pointer rounded-md transition-colors hover:text-violet-700 dark:hover:text-violet-300"
       : "",
   ]
     .filter(Boolean)
@@ -260,7 +262,11 @@ function Drillable({
         onKeyDown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
-            onDrill?.({ label: normalized, sourceKind });
+            onDrill?.({
+              label: normalized,
+              displayLabel: displayLabel?.trim() || undefined,
+              sourceKind,
+            });
           }
         }}
       >
@@ -285,13 +291,14 @@ function Drillable({
 export function RenderNodeView({
   node,
   depth = 0,
+  moduleTintIndex = 0,
   onDrill,
   drilling = false,
   isStreamingSkeleton = false,
 }: RenderNodeProps) {
   const { kind, props = {}, children = [] } = node;
   const compact = node.layout?.density === "compact";
-  const childProps = { onDrill, drilling, isStreamingSkeleton };
+  const childProps = { onDrill, drilling, isStreamingSkeleton, moduleTintIndex };
 
   if (!KNOWN_KINDS.has(kind)) {
     return <FallbackNode node={node} />;
@@ -300,7 +307,7 @@ export function RenderNodeView({
   switch (kind) {
     case "sheet":
       return (
-        <article className="cheat-sheet-root flex flex-col gap-4 overflow-hidden p-8">
+        <article className="cheat-sheet-root flex flex-col gap-6 overflow-hidden p-10">
           {children.length > 0 ? (
             children.map((child, i) => (
               <RenderNodeView key={i} node={child} depth={depth + 1} {...childProps} />
@@ -359,7 +366,6 @@ export function RenderNodeView({
 
     case "section": {
       const showTitle = props.title && props.hideTitle !== true;
-      const moduleEdges = moduleMapEdges(props.moduleEdges);
       const nonModules: RenderNode[] = [];
       const modules: RenderNode[] = [];
 
@@ -371,80 +377,45 @@ export function RenderNodeView({
         }
       }
 
-      const modulesByFrame = new Map<string, RenderNode[]>();
-      const ungroupedModules: RenderNode[] = [];
-
-      for (const moduleNode of modules) {
-        const group = str(moduleNode.props?.group);
-        if (group && isQuestionFrameGroup(group)) {
-          const bucket = modulesByFrame.get(group) ?? [];
-          bucket.push(moduleNode);
-          modulesByFrame.set(group, bucket);
-        } else {
-          ungroupedModules.push(moduleNode);
-        }
-      }
-
       return (
         <section
-          className={`flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50/80 p-3 dark:border-zinc-800 dark:bg-zinc-900/50 ${
-            compact ? "text-xs" : "text-sm"
-          }`}
+          className={`flex flex-col gap-3 ${compact ? "text-xs" : "text-sm"}`}
         >
           {showTitle ? (
-            <h2 className="border-b border-zinc-200 pb-1 text-sm font-semibold uppercase tracking-wide text-zinc-800 dark:border-zinc-700 dark:text-zinc-100">
+            <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-100">
               {str(props.title)}
             </h2>
           ) : null}
-          {moduleEdges.length > 0 ? (
-            <ModuleEdgeRow
-              edges={moduleEdges}
-              modules={modules}
-              compact={compact}
-            />
+          {nonModules.map((child, i) => (
+            <RenderNodeView key={`pre-${i}`} node={child} depth={depth + 1} {...childProps} />
+          ))}
+          {modules.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4">
+              {modules.map((moduleNode, i) => (
+                <div
+                  key={`module-${i}`}
+                  className={moduleGridSpan(moduleNode) === 2 ? "col-span-2" : "col-span-1"}
+                >
+                  <RenderNodeView
+                    node={moduleNode}
+                    depth={depth + 1}
+                    {...childProps}
+                    moduleTintIndex={i}
+                  />
+                </div>
+              ))}
+            </div>
           ) : null}
-          <div className="flex flex-col gap-2">
-            {nonModules.map((child, i) => (
-              <RenderNodeView key={`pre-${i}`} node={child} depth={depth + 1} {...childProps} />
-            ))}
-            {QUESTION_FRAME_ORDER.map((frame) => {
-              const bucket = modulesByFrame.get(frame);
-              if (!bucket?.length) return null;
-              const frameLabel =
-                QUESTION_FRAME_LABELS[frame as keyof typeof QUESTION_FRAME_LABELS] ??
-                frame;
-              return (
-                <QuestionFrameBand key={frame} label={frameLabel} compact={compact}>
-                  {bucket.map((child, i) => (
-                    <RenderNodeView
-                      key={`${frame}-${i}`}
-                      node={child}
-                      depth={depth + 1}
-                      {...childProps}
-                    />
-                  ))}
-                </QuestionFrameBand>
-              );
-            })}
-            {ungroupedModules.map((child, i) => (
-              <RenderNodeView
-                key={`ungrouped-${i}`}
-                node={child}
-                depth={depth + 1}
-                {...childProps}
-              />
-            ))}
-          </div>
         </section>
       );
     }
 
     case "module": {
       return (
-        <CollapsibleModule
+        <ModulePanel
           label={str(props.label)}
           hint={str(props.hint)}
-          group={str(props.group)}
+          tintIndex={moduleTintIndex}
           onDrill={onDrill}
           drilling={drilling}
           compact={compact}
@@ -460,29 +431,19 @@ export function RenderNodeView({
               isStreamingSkeleton={isStreamingSkeleton}
             />
           ))}
-        </CollapsibleModule>
+        </ModulePanel>
       );
     }
 
     case "anchor": {
-      const label = str(props.label);
       const teachGoal = str(props.teachGoal);
       return (
-        <div
-          className={`rounded-md border-l-4 border-violet-500/70 bg-white/80 px-3 py-2 dark:bg-zinc-950/40 ${
-            compact ? "text-xs" : "text-sm"
-          }`}
-        >
-          <div className="mb-1">
-            <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              {label}
-            </span>
-            {teachGoal ? (
-              <p className="mt-0.5 text-xs leading-snug text-zinc-600 dark:text-zinc-300">
-                <RichText text={teachGoal} />
-              </p>
-            ) : null}
-          </div>
+        <div className={compact ? "text-xs" : "text-sm"}>
+          {teachGoal ? (
+            <p className="mb-2 leading-relaxed text-zinc-600 dark:text-zinc-300">
+              <RichText text={teachGoal} />
+            </p>
+          ) : null}
           {children.length > 0 ? (
             <div className="flex flex-col gap-1.5">
               {children.map((child, i) => (
@@ -510,15 +471,12 @@ export function RenderNodeView({
       const headers = strArray(props.headers);
       const rows = tableRows(props.rows);
       return (
-        <table className="w-full table-fixed border-collapse text-left">
+        <table className="cheat-sheet-table w-full table-fixed border-collapse text-left">
           {headers.length > 0 ? (
             <thead>
               <tr>
                 {headers.map((h, i) => (
-                  <th
-                    key={i}
-                    className="break-words border border-zinc-200 bg-zinc-100 px-2 py-1 font-semibold dark:border-zinc-700 dark:bg-zinc-800"
-                  >
+                  <th key={i} className="break-words text-left">
                     {h}
                   </th>
                 ))}
@@ -529,10 +487,7 @@ export function RenderNodeView({
             {rows.map((row, ri) => (
               <tr key={ri}>
                 {row.map((cell, ci) => (
-                  <td
-                    key={ci}
-                    className="break-words border border-zinc-200 px-2 py-1 align-top text-[0.65rem] leading-snug dark:border-zinc-700"
-                  >
+                  <td key={ci} className="break-words align-top text-zinc-700">
                     <RichText text={cell} />
                   </td>
                 ))}
@@ -546,7 +501,7 @@ export function RenderNodeView({
     case "code": {
       const content = str(props.content);
       return (
-        <pre className="whitespace-pre-wrap break-words rounded-md bg-zinc-900 px-3 py-2 font-mono text-[0.7rem] leading-relaxed text-zinc-100">
+        <pre className="whitespace-pre-wrap break-words rounded-xl bg-zinc-900/95 px-3.5 py-2.5 font-mono text-[0.6875rem] leading-relaxed text-zinc-100 shadow-inner">
           <code>{content}</code>
         </pre>
       );
@@ -586,7 +541,7 @@ export function RenderNodeView({
     case "text":
       return (
         <p
-          className={`leading-snug text-zinc-700 dark:text-zinc-300 ${compact ? "text-xs" : "text-sm"}`}
+          className={`leading-relaxed text-zinc-600 dark:text-zinc-300 ${compact ? "text-xs" : "text-sm"}`}
         >
           <RichText text={str(props.content)} />
         </p>
@@ -627,37 +582,14 @@ export function RenderNodeView({
   }
 }
 
-function QuestionFrameBand({
-  label,
-  compact = false,
-  children,
-}: {
-  label: string;
-  compact?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className={`rounded-md border border-zinc-200/60 bg-white/50 p-2 dark:border-zinc-700/80 dark:bg-zinc-950/20 ${
-        compact ? "text-xs" : "text-sm"
-      }`}
-    >
-      <p className="mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">
-        {label}
-      </p>
-      <div className="flex flex-col gap-2">{children}</div>
-    </div>
-  );
-}
-
 function SheetHeader({ props }: { props: Record<string, unknown> }) {
   return (
-    <header className="border-b-2 border-zinc-800 pb-3 dark:border-zinc-200">
-      <h1 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
+    <header className="border-b border-zinc-900/8 pb-6">
+      <h1 className="text-[1.625rem] font-semibold tracking-tight text-zinc-900">
         {str(props.title, "Cheat Sheet")}
       </h1>
       {props.subtitle ? (
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1.5 text-sm font-normal text-zinc-400">
           {str(props.subtitle)}
         </p>
       ) : null}
@@ -665,50 +597,13 @@ function SheetHeader({ props }: { props: Record<string, unknown> }) {
   );
 }
 
-function ModuleEdgeRow({
-  edges,
-  modules,
-  compact = false,
-}: {
-  edges: ModuleMapEdge[];
-  modules: RenderNode[];
-  compact?: boolean;
-}) {
-  const labelById = new Map<string, string>();
-  for (const moduleNode of modules) {
-    const id = str(moduleNode.props?.id);
-    const label = str(moduleNode.props?.label);
-    if (id && label) {
-      labelById.set(id, label);
-    }
-  }
-
-  return (
-    <div
-      className={`space-y-1 rounded-md border border-dashed border-zinc-300/80 bg-zinc-100/50 p-2 dark:border-zinc-700 dark:bg-zinc-900/30 ${
-        compact ? "text-[0.65rem]" : "text-xs"
-      }`}
-    >
-      {edges.map((edge, i) => {
-        const fromLabel = labelById.get(edge.from) ?? edge.from;
-        const toLabel = labelById.get(edge.to) ?? edge.to;
-        const relationLabel = edge.relation
-          ? RELATION_LABELS[edge.relation] ?? edge.relation
-          : "→";
-        return (
-          <div
-            key={`${edge.from}-${edge.to}-${i}`}
-            className="flex flex-wrap items-center gap-1 text-zinc-600 dark:text-zinc-400"
-          >
-            <span className="font-medium text-zinc-700 dark:text-zinc-300">{fromLabel}</span>
-            <span className="px-0.5 text-[0.6rem] text-zinc-400">{relationLabel}</span>
-            <span className="font-medium text-zinc-700 dark:text-zinc-300">{toLabel}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+const RELATION_LABELS: Record<string, string> = {
+  requires: "requires",
+  "leads-to": "leads to",
+  "builds-on": "builds on",
+  contrasts: "contrasts",
+  "part-of": "part of",
+};
 
 type ModuleMapViewProps = {
   nodes: ModuleMapNode[];
@@ -854,6 +749,7 @@ function ModuleCard({
     >
       <Drillable
         label={node.label}
+        displayLabel={node.hint?.trim() || moduleDisplayTitle(node.label, "")}
         sourceKind="module"
         onDrill={onDrill}
         drilling={drilling}

@@ -323,14 +323,6 @@ function buildFallbackModuleNode(module: ModuleNode): RenderNode {
   };
 }
 
-function serializeModuleEdges(edges: ModuleEdge[]): Record<string, unknown>[] {
-  return edges.slice(0, MAX_EDGES_PER_SECTION).map((edge) => ({
-    from: edge.from,
-    to: edge.to,
-    ...(edge.relation ? { relation: edge.relation } : {}),
-  }));
-}
-
 /** Deterministic section when the agent returns truncated or invalid JSON. */
 export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
   const title = shortSectionTitle(section.title);
@@ -355,14 +347,10 @@ export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
       });
     }
 
-    const edges = section.edges ?? [];
     return {
       kind: "section",
       props: {
         title,
-        ...(edges.length > 0
-          ? { moduleEdges: serializeModuleEdges(edges) }
-          : {}),
       },
       layout: { density: section.density ?? "compact" },
       children,

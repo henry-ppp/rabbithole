@@ -2,6 +2,10 @@
 
 import { PanZoomViewport } from "@/components/cheat-sheet/PanZoomViewport";
 import { RoadmapFlowView } from "@/components/cheat-sheet/RoadmapFlowView";
+import {
+  GenerateButtonSpinner,
+  GenerationLoader,
+} from "@/components/cheat-sheet/GenerationLoader";
 import type { CheatSheetResponse } from "@/lib/cheat-sheet/render-contract";
 import {
   MAX_NAV_DEPTH,
@@ -9,6 +13,8 @@ import {
   canDrillDeeper,
   composeChildTopic,
   createFrame,
+  resolveFrameLabel,
+  withSheetDisplayTitle,
   type CheatSheetFrame,
   type DrillTarget,
 } from "@/lib/cheat-sheet/navigation";
@@ -23,7 +29,6 @@ import {
   styleSupportsDrill,
   type KnowledgeStyle,
 } from "@/lib/cheat-sheet/styles";
-import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 
 type StreamGenerationOptions = {
@@ -55,7 +60,6 @@ export default function CheatSheetPage() {
   const [depthLimitMessage, setDepthLimitMessage] = useState<string | null>(
     null,
   );
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const sessionCache = useRef(new Map<string, CheatSheetResponse>());
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -67,11 +71,13 @@ export default function CheatSheetPage() {
   const drillEnabled = styleSupportsDrill(activeStyle) && !roadmapView;
   const canExplore = stack.length > 0 && !loading && drillEnabled;
   const hasActiveSheet = Boolean(activeResponse?.tree);
+  const showCanvas = hasActiveSheet || loading;
   const isStreamingSkeleton =
     loading && activeResponse?.meta.streamingStage === "skeleton";
-  const streamingStatus = loading
-    ? streamingStatusLabel(activeResponse?.meta.streamingStage, activeStyle)
-    : null;
+  const loadingMessage =
+    streamingStatusLabel(activeResponse?.meta.streamingStage, activeStyle) ??
+    (activeStyle === "roadmap" ? "Planning roadmap…" : "Planning outline…");
+  const streamingStatus = loading ? loadingMessage : null;
 
   const applyResponse = useCallback((json: CheatSheetResponse) => {
     setWarnings(json.meta?.warnings ?? []);
@@ -172,7 +178,7 @@ export default function CheatSheetPage() {
   );
 
   const handleRegenerate = useCallback(async () => {
-    if (loading || stack.length === 0) return;
+    if (stack.length === 0) return;
 
     const frameIndex = stack.length - 1;
     const currentFrame = stack[frameIndex]!;
@@ -187,6 +193,11 @@ export default function CheatSheetPage() {
     const key = cacheKey(currentFrame.topic, audience, style);
     sessionCache.current.delete(key);
 
+    const patchResponse = (response: CheatSheetResponse) =>
+      frameIndex > 0
+        ? withSheetDisplayTitle(response, currentFrame.label)
+        : response;
+
     await runStreamingGeneration({
       topic: currentFrame.topic,
       label: currentFrame.label,
@@ -194,23 +205,25 @@ export default function CheatSheetPage() {
       parentContext,
       retrialCount: currentFrame.retrialCount,
       onPartial: (response) => {
+        const patched = patchResponse(response);
         setStack((prev) => {
           const next = [...prev];
           next[frameIndex] = createFrame(
             currentFrame.label,
             currentFrame.topic,
-            response,
+            patched,
             currentFrame.retrialCount,
           );
           return next;
         });
       },
       onDone: (response) => {
-        sessionCache.current.set(key, response);
+        const patched = patchResponse(response);
+        sessionCache.current.set(key, patched);
         const newFrame = createFrame(
           currentFrame.label,
           currentFrame.topic,
-          response,
+          patched,
           currentFrame.retrialCount + 1 + (response.meta.retrialCount ?? 0),
         );
         setStack((prev) => {
@@ -220,7 +233,7 @@ export default function CheatSheetPage() {
         });
       },
     });
-  }, [loading, stack, audience, style, drillEnabled, runStreamingGeneration]);
+  }, [stack, audience, style, drillEnabled, runStreamingGeneration]);
 
   const handleDrill = useCallback(
     async (target: DrillTarget) => {
@@ -236,6 +249,10 @@ export default function CheatSheetPage() {
       const childTopic = composeChildTopic(stack, target);
       if (!childTopic) return;
 
+      const frameLabel = resolveFrameLabel(target);
+      const patchResponse = (response: CheatSheetResponse) =>
+        withSheetDisplayTitle(response, frameLabel);
+
       setDepthLimitMessage(null);
       const parentFrame = stack[stack.length - 1]!;
       const parentContext = parentFrame.topic;
@@ -243,9 +260,10 @@ export default function CheatSheetPage() {
       const cached = sessionCache.current.get(key);
 
       if (cached) {
-        const frame = createFrame(target.label, childTopic, cached);
+        const patched = patchResponse(cached);
+        const frame = createFrame(frameLabel, childTopic, patched);
         setStack((prev) => [...prev, frame]);
-        applyResponse(cached);
+        applyResponse(patched);
         setError(null);
         return;
       }
@@ -258,9 +276,10 @@ export default function CheatSheetPage() {
         style: "cheatsheet",
         parentContext,
         onPartial: (response) => {
+          const patched = patchResponse(response);
           setStack((prev) => {
             const last = prev[prev.length - 1];
-            const frame = createFrame(target.label, childTopic, response);
+            const frame = createFrame(frameLabel, childTopic, patched);
             if (last?.topic === childTopic) {
               return [...prev.slice(0, -1), frame];
             }
@@ -268,10 +287,11 @@ export default function CheatSheetPage() {
           });
         },
         onDone: (response) => {
-          sessionCache.current.set(key, response);
+          const patched = patchResponse(response);
+          sessionCache.current.set(key, patched);
           setStack((prev) => {
             const last = prev[prev.length - 1];
-            const frame = createFrame(target.label, childTopic, response);
+            const frame = createFrame(frameLabel, childTopic, patched);
             if (last?.topic === childTopic) {
               return [...prev.slice(0, -1), frame];
             }
@@ -299,7 +319,7 @@ export default function CheatSheetPage() {
               ) : null}
               {isLast ? (
                 <span
-                  className="max-w-[10rem] truncate font-medium text-zinc-800 dark:text-zinc-100"
+                  className="truncate font-medium text-zinc-900 dark:text-zinc-50"
                   title={frame.label}
                 >
                   {frame.label}
@@ -309,7 +329,7 @@ export default function CheatSheetPage() {
                   type="button"
                   disabled={!allowNav}
                   onClick={() => navigateToFrame(index)}
-                  className="max-w-[10rem] truncate text-violet-700 hover:underline disabled:cursor-default disabled:opacity-50 dark:text-violet-300"
+                  className="truncate text-zinc-500 transition-colors hover:text-zinc-900 disabled:cursor-default disabled:opacity-50 dark:text-zinc-400 dark:hover:text-zinc-100"
                   title={frame.label}
                 >
                   {frame.label}
@@ -325,27 +345,42 @@ export default function CheatSheetPage() {
     ) : null;
 
   return (
-    <div className="flex h-[100dvh] flex-col bg-zinc-100 dark:bg-black">
-      <header className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-        <label className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="sr-only">Topic</span>
-          <input
-            type="text"
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            className="min-w-0 flex-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm text-zinc-900 placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
-            placeholder="Topic…"
-          />
-        </label>
+    <div className="flex h-[100dvh] flex-col bg-zinc-50 dark:bg-zinc-950">
+      <header className="flex shrink-0 items-center gap-3 border-b border-zinc-200/70 bg-white/80 px-4 py-2.5 backdrop-blur-xl dark:border-zinc-800/70 dark:bg-zinc-950/80">
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-zinc-100/90 px-4 py-2 text-sm transition-shadow focus-within:bg-white focus-within:ring-2 focus-within:ring-zinc-900/10 dark:bg-zinc-900/80 dark:focus-within:bg-zinc-900 dark:focus-within:ring-zinc-100/10">
+          {stack.length > 0 ? (
+            <>
+              <nav
+                aria-label="Topic path"
+                className="flex min-w-0 shrink items-center gap-1 overflow-hidden text-zinc-500 dark:text-zinc-400"
+              >
+                {breadcrumbTrail}
+              </nav>
+              <span className="shrink-0 text-zinc-300 dark:text-zinc-600" aria-hidden>
+                |
+              </span>
+            </>
+          ) : null}
+          <label className="flex min-w-0 flex-1 items-center">
+            <span className="sr-only">Topic</span>
+            <input
+              type="text"
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              className="min-w-0 flex-1 border-0 bg-transparent text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:text-zinc-50"
+              placeholder={stack.length > 0 ? "New topic…" : "Topic…"}
+            />
+          </label>
+        </div>
 
-        <label className="hidden items-center gap-1.5 sm:flex">
-          <span className="text-[0.65rem] font-medium uppercase tracking-wide text-zinc-400">
+        <label className="hidden items-center gap-2 sm:flex">
+          <span className="text-[0.6875rem] font-medium text-zinc-400">
             Style
           </span>
           <select
             value={style}
             onChange={(e) => setStyle(normalizeStyle(e.target.value))}
-            className="rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            className="rounded-full border-0 bg-zinc-100/90 px-3 py-2 text-sm text-zinc-700 focus:outline-none focus:ring-2 focus:ring-zinc-900/10 dark:bg-zinc-900/80 dark:text-zinc-200"
           >
             <option value="cheatsheet">Cheat sheet</option>
             <option value="roadmap">Roadmap</option>
@@ -356,75 +391,10 @@ export default function CheatSheetPage() {
           type="button"
           disabled={loading || !topic.trim()}
           onClick={() => runRootGeneration(false)}
-          className="shrink-0 rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          className="inline-flex h-9 min-w-[5.75rem] shrink-0 items-center justify-center rounded-full bg-zinc-900 px-4 text-sm font-medium text-white shadow-sm transition-opacity disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
         >
-          {loading ? "…" : "Generate"}
+          {loading ? <GenerateButtonSpinner /> : "Generate"}
         </button>
-
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setMenuOpen((open) => !open)}
-            className="rounded-md border border-zinc-200 px-2 py-1.5 text-sm text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
-            aria-expanded={menuOpen}
-            aria-label="More options"
-          >
-            ⋯
-          </button>
-          {menuOpen ? (
-            <>
-              <button
-                type="button"
-                className="fixed inset-0 z-10 cursor-default"
-                aria-label="Close menu"
-                onClick={() => setMenuOpen(false)}
-              />
-              <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-md border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
-                <label className="flex flex-col gap-1 border-b border-zinc-100 px-3 py-2 dark:border-zinc-800">
-                  <span className="text-[0.65rem] font-medium text-zinc-500">
-                    Audience
-                  </span>
-                  <input
-                    type="text"
-                    value={audience}
-                    onChange={(e) => setAudience(e.target.value)}
-                    className="rounded border border-zinc-200 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                    placeholder="optional"
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-2 border-b border-zinc-100 px-3 py-2 sm:hidden dark:border-zinc-800">
-                  <span className="text-xs text-zinc-500">Style</span>
-                  <select
-                    value={style}
-                    onChange={(e) => setStyle(normalizeStyle(e.target.value))}
-                    className="rounded border border-zinc-200 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-950"
-                  >
-                    <option value="cheatsheet">Cheat sheet</option>
-                    <option value="roadmap">Roadmap</option>
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  disabled={loading}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    runRootGeneration(true);
-                  }}
-                  className="block w-full px-3 py-2 text-left text-sm hover:bg-zinc-50 disabled:opacity-50 dark:hover:bg-zinc-800"
-                >
-                  Load fixture
-                </button>
-                <Link
-                  href="/"
-                  className="block px-3 py-2 text-sm text-zinc-600 hover:bg-zinc-50 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                  onClick={() => setMenuOpen(false)}
-                >
-                  Home
-                </Link>
-              </div>
-            </>
-          ) : null}
-        </div>
       </header>
 
       {(error || depthLimitMessage || warnings.length > 0) && (
@@ -448,55 +418,46 @@ export default function CheatSheetPage() {
       )}
 
       <main className="relative flex min-h-0 flex-1 flex-col">
-        {hasActiveSheet ? (
+        {showCanvas ? (
           roadmapView ? (
             <RoadmapFlowView
               key={activeFrame?.id ?? "roadmap"}
               node={activeResponse!.tree}
               onRegenerate={handleRegenerate}
-              regenerateDisabled={loading}
               retrialCount={activeFrame?.retrialCount ?? 0}
-              breadcrumbs={breadcrumbTrail}
               streamingStatus={streamingStatus}
               isStreamingSkeleton={isStreamingSkeleton}
             />
           ) : (
             <PanZoomViewport
-              key={activeFrame?.id ?? "viewport"}
-              artboardWidth={1400}
-              artboardMinHeight={1000}
-              onRegenerate={handleRegenerate}
-              regenerateDisabled={loading}
+              key={activeFrame?.topic ?? "viewport"}
+              onRegenerate={stack.length > 0 ? handleRegenerate : undefined}
               retrialCount={activeFrame?.retrialCount ?? 0}
-              breadcrumbs={drillEnabled ? breadcrumbTrail : undefined}
               streamingStatus={streamingStatus}
             >
-              <RenderNodeView
-                node={activeResponse!.tree}
-                onDrill={canExplore ? handleDrill : undefined}
-                drilling={loading}
-                isStreamingSkeleton={isStreamingSkeleton}
-              />
+              {hasActiveSheet ? (
+                <RenderNodeView
+                  node={activeResponse!.tree}
+                  onDrill={canExplore ? handleDrill : undefined}
+                  drilling={loading}
+                  isStreamingSkeleton={isStreamingSkeleton}
+                />
+              ) : (
+                <GenerationLoader message={loadingMessage} />
+              )}
             </PanZoomViewport>
           )
         ) : (
-          <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-zinc-500">
-            {loading ? (
-              <p aria-live="polite">
-                {streamingStatus ??
-                  (style === "roadmap"
-                    ? "Planning roadmap…"
-                    : "Planning outline…")}
-              </p>
-            ) : style === "roadmap" ? (
+          <div className="flex flex-1 items-center justify-center p-8 text-center text-sm text-zinc-400">
+            {style === "roadmap" ? (
               <>
                 Generate a concept map — key topics connected top to bottom.
                 Click a node to expand key terms and see prerequisites.
               </>
             ) : (
               <>
-                Enter a topic and generate, or load the fixture from the menu.
-                Modules start collapsed; expand for details, click titles to
+                Enter a topic and generate a cheat sheet.
+                Each area shows key items at a glance; click module titles to
                 drill deeper.
               </>
             )}

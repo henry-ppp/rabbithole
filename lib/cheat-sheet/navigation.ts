@@ -7,7 +7,10 @@ export const MAX_DRILL_LABEL_LENGTH = 120;
 export type DrillSourceKind = "module";
 
 export type DrillTarget = {
+  /** Topic phrase sent to the API when drilling deeper. */
   label: string;
+  /** Visible title for breadcrumbs (module hint / card title). */
+  displayLabel?: string;
   sourceKind: DrillSourceKind;
 };
 
@@ -96,5 +99,33 @@ export function createFrame(
     topic: truncateTopic(topic),
     response,
     retrialCount,
+  };
+}
+
+/** Visible title for drill breadcrumbs — always the clicked card title, never agent sheet title. */
+export function resolveFrameLabel(target: DrillTarget): string {
+  const display = normalizeDrillLabel(target.displayLabel ?? "");
+  if (display) return display;
+
+  return normalizeDrillLabel(target.label) || target.label.slice(0, 40);
+}
+
+/** Force the sheet header to match the clicked module title on drill-down pages. */
+export function withSheetDisplayTitle(
+  response: CheatSheetResponse,
+  title: string,
+): CheatSheetResponse {
+  const normalized = normalizeDrillLabel(title) || title.trim();
+  if (!normalized || response.tree.kind !== "sheet") return response;
+
+  return {
+    ...response,
+    tree: {
+      ...response.tree,
+      props: {
+        ...response.tree.props,
+        title: normalized,
+      },
+    },
   };
 }

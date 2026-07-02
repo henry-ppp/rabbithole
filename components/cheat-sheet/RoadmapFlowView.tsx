@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
-  Controls,
+  Panel,
   useEdgesState,
   useNodesInitialized,
   useNodesState,
@@ -23,7 +23,7 @@ import {
 import { graphEdgesFromNode } from "@/lib/cheat-sheet/concept-graph";
 import { ConceptFlowNode } from "@/components/cheat-sheet/ConceptFlowNode";
 import { ConceptEdge } from "@/components/cheat-sheet/ConceptEdge";
-import { CanvasToolbar } from "@/components/cheat-sheet/CanvasToolbar";
+import { CanvasControlBar } from "@/components/cheat-sheet/CanvasToolbar";
 
 const nodeTypes = { concept: ConceptFlowNode };
 const edgeTypes = { concept: ConceptEdge };
@@ -31,9 +31,7 @@ const edgeTypes = { concept: ConceptEdge };
 type RoadmapFlowViewProps = {
   node: RenderNode;
   onRegenerate?: () => void;
-  regenerateDisabled?: boolean;
   retrialCount?: number;
-  breadcrumbs?: ReactNode;
   streamingStatus?: string | null;
   isStreamingSkeleton?: boolean;
 };
@@ -90,12 +88,26 @@ function MeasuredLayoutSync({
   return null;
 }
 
+function RoadmapCanvasControls({
+  onRegenerate,
+  retrialCount,
+}: Pick<RoadmapFlowViewProps, "onRegenerate" | "retrialCount">) {
+  const { zoomIn, zoomOut } = useReactFlow();
+
+  return (
+    <CanvasControlBar
+      onZoomOut={() => zoomOut()}
+      onZoomIn={() => zoomIn()}
+      onRegenerate={onRegenerate}
+      retrialCount={retrialCount}
+    />
+  );
+}
+
 export function RoadmapFlowView({
   node,
   onRegenerate,
-  regenerateDisabled,
   retrialCount = 0,
-  breadcrumbs,
   streamingStatus,
   isStreamingSkeleton = false,
 }: RoadmapFlowViewProps) {
@@ -144,24 +156,27 @@ export function RoadmapFlowView({
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <CanvasToolbar
-        variant="graph"
-        onRegenerate={onRegenerate}
-        regenerateDisabled={regenerateDisabled}
-        retrialCount={retrialCount}
-        breadcrumbs={breadcrumbs}
-        streamingStatus={streamingStatus}
-      />
-      <div
-        className={[
-          "min-h-0 flex-1 bg-zinc-200/60 dark:bg-zinc-950",
-          isStreamingSkeleton ? "[&_.react-flow__node]:animate-pulse" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-      >
-        <ReactFlow
+    <div
+      className={[
+        "relative min-h-0 flex-1 bg-zinc-100 dark:bg-zinc-950 [background-image:radial-gradient(circle_at_1px_1px,rgba(0,0,0,0.045)_1px,transparent_0)] [background-size:24px_24px]",
+        isStreamingSkeleton ? "[&_.react-flow__node]:animate-pulse" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      {streamingStatus ? (
+        <span
+          className="pointer-events-none absolute right-4 top-4 z-20 flex items-center gap-2 rounded-full border border-violet-200/80 bg-violet-50/90 px-3 py-1 text-[0.6875rem] font-medium text-violet-700 shadow-sm backdrop-blur-md dark:border-violet-900/50 dark:bg-violet-950/80 dark:text-violet-200"
+          aria-live="polite"
+        >
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400/60 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500" />
+          </span>
+          {streamingStatus}
+        </span>
+      ) : null}
+      <ReactFlow
           nodes={nodes}
           edges={edges}
           onNodesChange={onNodesChange}
@@ -189,9 +204,13 @@ export function RoadmapFlowView({
             onLayout={applyLayout}
           />
           <Background gap={20} size={1} className="!bg-transparent" />
-          <Controls showInteractive={false} className="!shadow-sm" />
+          <Panel position="bottom-left" className="!m-0">
+            <RoadmapCanvasControls
+              onRegenerate={onRegenerate}
+              retrialCount={retrialCount}
+            />
+          </Panel>
         </ReactFlow>
       </div>
-    </div>
-  );
+    );
 }

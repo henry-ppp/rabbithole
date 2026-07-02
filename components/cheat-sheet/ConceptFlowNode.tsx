@@ -8,10 +8,10 @@ function ConceptFlowNodeComponent({ data }: NodeProps<Node<ConceptNodeData>>) {
   return (
     <div
       className={[
-        "rounded-lg border bg-white px-3 py-2 text-left shadow-sm transition-all dark:bg-zinc-950",
+        "rounded-xl border bg-white px-3.5 py-2.5 text-left shadow-[0_2px_8px_rgba(15,23,42,0.06)] transition-all dark:bg-zinc-950",
         data.expanded
-          ? "border-violet-500 ring-2 ring-violet-400/30 dark:border-violet-400"
-          : "border-zinc-200/80 dark:border-zinc-700",
+          ? "border-violet-400/60 ring-2 ring-violet-400/15 dark:border-violet-400"
+          : "border-zinc-200/70 dark:border-zinc-700",
         data.dimmed ? "opacity-35" : "opacity-100",
         data.expanded ? "min-w-[200px]" : "min-w-[148px]",
       ]
