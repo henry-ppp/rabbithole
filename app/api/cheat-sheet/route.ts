@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-import { gitRebaseFixture } from "@/lib/cheat-sheet/fixture";
+import {
+  getFixtureForStyle,
+  gitRebaseFixture,
+} from "@/lib/cheat-sheet/fixture";
 import {
   sanitizeRenderNode,
   validateRenderTree,
 } from "@/lib/cheat-sheet/render-contract";
+import { normalizeStyle } from "@/lib/cheat-sheet/styles";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -13,6 +17,8 @@ export const dynamic = "force-dynamic";
 type PostBody = {
   topic?: string;
   audience?: string;
+  style?: string;
+  /** @deprecated use style */
   depth?: string;
   parentContext?: string;
   useFixture?: boolean;
@@ -21,9 +27,10 @@ type PostBody = {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PostBody;
+    const style = normalizeStyle(body.style ?? body.depth);
 
     if (body.useFixture) {
-      return NextResponse.json(gitRebaseFixture);
+      return NextResponse.json(getFixtureForStyle(style));
     }
 
     const topic = body.topic?.trim();
@@ -34,11 +41,18 @@ export async function POST(request: Request) {
       );
     }
 
+    if (style === "roadmap" && body.parentContext?.trim()) {
+      return NextResponse.json(
+        { error: "Roadmap style does not support drill-down" },
+        { status: 400 },
+      );
+    }
+
     const { generateCheatSheet } = await import("@/lib/cheat-sheet/orchestrate");
     const result = await generateCheatSheet({
       topic,
       audience: body.audience?.trim(),
-      depth: body.depth?.trim(),
+      style,
       parentContext: body.parentContext?.trim(),
     });
 

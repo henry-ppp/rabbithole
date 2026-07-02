@@ -3,12 +3,15 @@
  *
  * Usage:
  *   pnpm test:cheat-sheet:e2e
- *   pnpm test:cheat-sheet:e2e -- --topic "cfa level 2" --depth exam
+ *   pnpm test:cheat-sheet:e2e -- --topic "cfa level 2" --style cheatsheet
+ *   pnpm test:cheat-sheet:e2e -- --topic "git rebase" --style roadmap
  *
  * Requires CURSOR_API_KEY in .env or .env.local
  */
+import { validateConceptGraphTree } from "../lib/cheat-sheet/concept-graph";
 import { generateCheatSheet } from "../lib/cheat-sheet/orchestrate";
 import { countNodes, validateRenderTree } from "../lib/cheat-sheet/render-contract";
+import { normalizeStyle } from "../lib/cheat-sheet/styles";
 
 function readArg(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);
@@ -17,32 +20,47 @@ function readArg(flag: string): string | undefined {
 }
 
 async function main() {
-  const topic = readArg("--topic") ?? process.env.CHEAT_SHEET_E2E_TOPIC ?? "cfa level 2";
-  const depth = readArg("--depth") ?? process.env.CHEAT_SHEET_E2E_DEPTH ?? "exam";
+  const topic =
+    readArg("--topic") ?? process.env.CHEAT_SHEET_E2E_TOPIC ?? "cfa level 2";
+  const style = normalizeStyle(
+    readArg("--style") ??
+      readArg("--depth") ??
+      process.env.CHEAT_SHEET_E2E_STYLE ??
+      "cheatsheet",
+  );
 
   if (!process.env.CURSOR_API_KEY?.trim()) {
     console.error("CURSOR_API_KEY is not set (.env or .env.local)");
     process.exit(1);
   }
 
-  console.log(`E2E cheat sheet: topic="${topic}" depth="${depth}"`);
+  console.log(`E2E generation: topic="${topic}" style="${style}"`);
   const started = Date.now();
 
-  const { tree, meta } = await generateCheatSheet({ topic, depth });
+  const { tree, meta } = await generateCheatSheet({ topic, style });
 
-  const validation = validateRenderTree(tree);
-  if (!validation.ok) {
-    throw new Error(validation.error ?? "Invalid render tree");
+  const countValidation = validateRenderTree(tree);
+  if (!countValidation.ok) {
+    throw new Error(countValidation.error ?? "Invalid render tree");
+  }
+
+  if (style === "roadmap") {
+    const graphValidation = validateConceptGraphTree(tree);
+    if (!graphValidation.ok) {
+      throw new Error(graphValidation.error ?? "Invalid concept graph");
+    }
   }
 
   const nodeCount = countNodes(tree);
-  const shellPhases = meta.phases.filter((p) =>
-    p.name.startsWith("shell-assembler") || p.name === "planner",
-  );
 
   console.log(`OK in ${((Date.now() - started) / 1000).toFixed(1)}s`);
-  console.log(`  Modules planned: ${meta.coverageMap?.sections[0]?.modules?.length ?? "?"}`);
-  console.log(`  Shell phases: ${shellPhases.length}`);
+  if (style === "roadmap") {
+    console.log(`  Concept nodes: ${meta.conceptGraph?.nodes.length ?? "?"}`);
+  } else {
+    console.log(
+      `  Modules planned: ${meta.coverageMap?.sections[0]?.modules?.length ?? "?"}`,
+    );
+  }
   console.log(`  Render tree nodes: ${nodeCount}`);
   if (meta.sectionsTruncated) {
     console.warn("  Warning: coverage sections were truncated at safety ceiling");

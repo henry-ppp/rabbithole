@@ -1,10 +1,14 @@
 import { jsonrepair } from "jsonrepair";
 
+import type { ConceptGraphMap } from "./concept-graph";
+import type { KnowledgeStyle } from "./styles";
+
 export type LayoutHint = {
   column?: number;
   span?: number;
   priority?: "primary" | "secondary";
   density?: "compact" | "normal";
+  variant?: "cheatsheet" | "roadmap" | "teach";
 };
 
 export type RenderNode = {
@@ -17,7 +21,7 @@ export type RenderNode = {
 export type ModuleEdge = {
   from: string;
   to: string;
-  relation?: "requires" | "leads-to" | "contrasts" | "part-of";
+  relation?: "requires" | "leads-to" | "contrasts" | "part-of" | "builds-on";
 };
 
 export type ModuleNode = {
@@ -65,13 +69,17 @@ export type CoverageMap = {
 };
 
 export type CheatSheetMeta = {
+  style?: KnowledgeStyle;
   coverageMap?: CoverageMap;
+  conceptGraph?: ConceptGraphMap;
   /** True when the planner returned more sections than the parser safety ceiling. */
   sectionsTruncated?: boolean;
   /** Agent JSON parse retries during this generation (excludes the initial attempt). */
   retrialCount?: number;
   /** Non-fatal issues (e.g. agent fallback sections). */
   warnings?: string[];
+  /** Present while a streamed generation is in progress. */
+  streamingStage?: "skeleton" | "final";
   phases: Array<{
     name: string;
     status: "ok" | "error" | "skipped";
@@ -336,8 +344,8 @@ export function buildFallbackSectionNode(section: CoverageSection): RenderNode {
   }
 
   if (hasThreeLayerSection(section)) {
-    for (const module of (section.modules ?? []).slice(0, MAX_MODULES_PER_SECTION)) {
-      children.push(buildFallbackModuleNode(module));
+    for (const moduleNode of (section.modules ?? []).slice(0, MAX_MODULES_PER_SECTION)) {
+      children.push(buildFallbackModuleNode(moduleNode));
     }
 
     if (children.length === 0) {
@@ -482,6 +490,13 @@ function sanitizeLayout(value: unknown): LayoutHint | undefined {
   if (value.density === "compact" || value.density === "normal") {
     layout.density = value.density;
   }
+  if (
+    value.variant === "cheatsheet" ||
+    value.variant === "roadmap" ||
+    value.variant === "teach"
+  ) {
+    layout.variant = value.variant;
+  }
   return Object.keys(layout).length > 0 ? layout : undefined;
 }
 
@@ -572,6 +587,7 @@ const VALID_EDGE_RELATIONS = new Set([
   "leads-to",
   "contrasts",
   "part-of",
+  "builds-on",
 ]);
 
 type LegacyAnchorKnowledge = AnchorKnowledge & {

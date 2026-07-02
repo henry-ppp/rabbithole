@@ -7,6 +7,7 @@ import {
   type ReactNode,
   type WheelEvent,
 } from "react";
+import { CanvasToolbar } from "@/components/cheat-sheet/CanvasToolbar";
 
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 2;
@@ -19,7 +20,6 @@ type ViewState = {
   offset: Point;
 };
 
-/** Keep the artboard point under `anchor` (container-local px) fixed on screen. */
 function zoomAtPoint(
   offset: Point,
   oldScale: number,
@@ -37,7 +37,6 @@ function clampScale(value: number): number {
 }
 
 function wheelScaleFactor(deltaY: number, deltaMode: number): number {
-  // DOM_DELTA_LINE (1) / DOM_DELTA_PAGE (2) send larger deltas than pixel mode (0).
   const normalized =
     deltaMode === 1 ? deltaY * 16 : deltaMode === 2 ? deltaY * 400 : deltaY;
   return Math.exp(-normalized * 0.002);
@@ -47,7 +46,11 @@ type PanZoomViewportProps = {
   children: ReactNode;
   artboardWidth?: number;
   artboardMinHeight?: number;
+  onRegenerate?: () => void;
+  regenerateDisabled?: boolean;
   retrialCount?: number;
+  breadcrumbs?: ReactNode;
+  streamingStatus?: string | null;
   className?: string;
 };
 
@@ -55,10 +58,15 @@ export function PanZoomViewport({
   children,
   artboardWidth = 1400,
   artboardMinHeight = 900,
+  onRegenerate,
+  regenerateDisabled,
   retrialCount = 0,
+  breadcrumbs,
+  streamingStatus,
   className = "",
 }: PanZoomViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const artboardRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>(() => {
     const scale =
       typeof window !== "undefined" &&
@@ -97,7 +105,8 @@ export function PanZoomViewport({
 
   const fitToWidth = useCallback(() => {
     const container = containerRef.current;
-    if (!container) return;
+    const artboard = artboardRef.current;
+    if (!container || !artboard) return;
     const padding = 48;
     const anchor = {
       x: container.clientWidth / 2,
@@ -206,44 +215,19 @@ export function PanZoomViewport({
 
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
-      <div className="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-950">
-        <span className="text-xs text-zinc-500">
-          {Math.round(scale * 100)}%
-        </span>
-        <button
-          type="button"
-          onClick={() => zoomByDelta(-0.15)}
-          className="rounded border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-          aria-label="Zoom out"
-        >
-          −
-        </button>
-        <button
-          type="button"
-          onClick={() => zoomByDelta(0.15)}
-          className="rounded border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-          aria-label="Zoom in"
-        >
-          +
-        </button>
-        <button
-          type="button"
-          onClick={fitToWidth}
-          className="rounded border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-        >
-          Fit width
-        </button>
-        <button
-          type="button"
-          onClick={resetView}
-          className="rounded border border-zinc-300 px-2 py-0.5 text-xs hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-900"
-        >
-          Reset
-        </button>
-        <span className="ml-auto text-xs text-zinc-400">
-          Drag to pan · Scroll to zoom · Click highlighted items to explore
-        </span>
-      </div>
+      <CanvasToolbar
+        variant="sheet"
+        scale={scale}
+        onZoomOut={() => zoomByDelta(-0.15)}
+        onZoomIn={() => zoomByDelta(0.15)}
+        onFitWidth={fitToWidth}
+        onReset={resetView}
+        onRegenerate={onRegenerate}
+        regenerateDisabled={regenerateDisabled}
+        retrialCount={retrialCount}
+        breadcrumbs={breadcrumbs}
+        streamingStatus={streamingStatus}
+      />
 
       <div
         ref={containerRef}
@@ -263,20 +247,13 @@ export function PanZoomViewport({
           }}
         >
           <div
+            ref={artboardRef}
             className="relative rounded-lg bg-white shadow-sm ring-1 ring-zinc-300/80 dark:bg-zinc-900 dark:ring-zinc-700"
             style={{
               width: artboardWidth,
               minHeight: artboardMinHeight,
             }}
           >
-            {retrialCount > 0 ? (
-              <div
-                className="pointer-events-none absolute right-4 top-4 z-10 select-none font-mono text-3xl font-semibold tabular-nums leading-none text-amber-600 dark:text-amber-400"
-                aria-label={`${retrialCount} retrials`}
-              >
-                {retrialCount}
-              </div>
-            ) : null}
             {children}
           </div>
         </div>

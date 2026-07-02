@@ -35,12 +35,12 @@ export function normalizeDrillLabel(label: string): string {
 export function cacheKey(
   topic: string,
   audience?: string,
-  depth?: string,
+  style?: string,
 ): string {
   return JSON.stringify({
     topic: topic.trim(),
     audience: audience?.trim() ?? "",
-    depth: depth?.trim() ?? "",
+    style: style?.trim() ?? "cheatsheet",
   });
 }
 

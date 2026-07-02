@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent, PointerEvent, ReactNode } from "react";
+import { useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import type { DrillSourceKind, DrillTarget } from "./navigation";
 import { normalizeDrillLabel } from "./navigation";
 import type { RenderNode } from "./render-contract";
@@ -17,6 +17,7 @@ type RenderNodeProps = {
   depth?: number;
   onDrill?: (target: DrillTarget) => void;
   drilling?: boolean;
+  isStreamingSkeleton?: boolean;
 };
 
 const KNOWN_KINDS = new Set([
@@ -28,6 +29,8 @@ const KNOWN_KINDS = new Set([
   "anchor",
   "moduleMap",
   "topicMap",
+  "conceptGraph",
+  "conceptNode",
   "table",
   "code",
   "callout",
@@ -106,9 +109,98 @@ function isQuestionFrameGroup(group: string): boolean {
 const RELATION_LABELS: Record<string, string> = {
   requires: "requires",
   "leads-to": "leads to",
+  "builds-on": "builds on",
   contrasts: "contrasts",
   "part-of": "part of",
 };
+
+type CollapsibleModuleProps = {
+  label: string;
+  hint: string;
+  group: string;
+  onDrill?: (target: DrillTarget) => void;
+  drilling?: boolean;
+  compact?: boolean;
+  isStreamingSkeleton?: boolean;
+  children: ReactNode;
+};
+
+function CollapsibleModule({
+  label,
+  hint,
+  group,
+  onDrill,
+  drilling,
+  compact,
+  isStreamingSkeleton,
+  children,
+}: CollapsibleModuleProps) {
+  const [expanded, setExpanded] = useState(false);
+  const showGroupTag = Boolean(group) && !isQuestionFrameGroup(group);
+  const hasChildren = Array.isArray(children) ? (children as ReactNode[]).length > 0 : Boolean(children);
+
+  return (
+    <div
+      className={[
+        "rounded-lg border border-zinc-200/80 bg-white/80 dark:border-zinc-700 dark:bg-zinc-950/40",
+        compact ? "text-xs" : "text-sm",
+        isStreamingSkeleton ? "animate-pulse" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+    >
+      <div className="flex items-start gap-1.5 p-3">
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => setExpanded((open) => !open)}
+            className="mt-0.5 shrink-0 rounded p-0.5 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+            aria-expanded={expanded}
+            aria-label={expanded ? "Collapse module" : "Expand module"}
+          >
+            <span
+              className={`inline-block text-xs transition-transform ${expanded ? "rotate-90" : ""}`}
+              aria-hidden
+            >
+              ›
+            </span>
+          </button>
+        ) : (
+          <span className="w-5 shrink-0" aria-hidden />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <Drillable
+              label={label}
+              sourceKind="module"
+              onDrill={onDrill}
+              drilling={drilling}
+              as="span"
+              className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
+            >
+              {label}
+            </Drillable>
+            {hint ? (
+              <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.65rem] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                {hint}
+              </span>
+            ) : null}
+            {showGroupTag ? (
+              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
+                {group}
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+      {expanded && hasChildren ? (
+        <div className="flex flex-col gap-2 border-t border-zinc-100 px-3 pb-3 pt-2 dark:border-zinc-800">
+          {children}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 type DrillableProps = {
   label: string;
@@ -195,10 +287,11 @@ export function RenderNodeView({
   depth = 0,
   onDrill,
   drilling = false,
+  isStreamingSkeleton = false,
 }: RenderNodeProps) {
   const { kind, props = {}, children = [] } = node;
   const compact = node.layout?.density === "compact";
-  const childProps = { onDrill, drilling };
+  const childProps = { onDrill, drilling, isStreamingSkeleton };
 
   if (!KNOWN_KINDS.has(kind)) {
     return <FallbackNode node={node} />;
@@ -347,51 +440,27 @@ export function RenderNodeView({
     }
 
     case "module": {
-      const label = str(props.label);
-      const hint = str(props.hint);
-      const group = str(props.group);
-      const showGroupTag = Boolean(group) && !isQuestionFrameGroup(group);
       return (
-        <div
-          className={`rounded-lg border border-zinc-200/80 bg-white/80 p-3 dark:border-zinc-700 dark:bg-zinc-950/40 ${
-            compact ? "text-xs" : "text-sm"
-          }`}
+        <CollapsibleModule
+          label={str(props.label)}
+          hint={str(props.hint)}
+          group={str(props.group)}
+          onDrill={onDrill}
+          drilling={drilling}
+          compact={compact}
+          isStreamingSkeleton={isStreamingSkeleton}
         >
-          <div className="mb-2 flex flex-wrap items-baseline gap-2">
-            <Drillable
-              label={label}
-              sourceKind="module"
+          {children.map((child, i) => (
+            <RenderNodeView
+              key={i}
+              node={child}
+              depth={depth + 1}
               onDrill={onDrill}
               drilling={drilling}
-              as="span"
-              className="text-sm font-semibold text-zinc-900 dark:text-zinc-50"
-            >
-              {label}
-            </Drillable>
-            {hint ? (
-              <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[0.65rem] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
-                {hint}
-              </span>
-            ) : null}
-            {showGroupTag ? (
-              <span className="text-[0.6rem] font-semibold uppercase tracking-wide text-zinc-400 dark:text-zinc-500">
-                {group}
-              </span>
-            ) : null}
-          </div>
-          {children.length > 0 ? (
-            <div className="flex flex-col gap-2">
-              {children.map((child, i) => (
-                <RenderNodeView
-                  key={i}
-                  node={child}
-                  depth={depth + 1}
-                  drilling={drilling}
-                />
-              ))}
-            </div>
-          ) : null}
-        </div>
+              isStreamingSkeleton={isStreamingSkeleton}
+            />
+          ))}
+        </CollapsibleModule>
       );
     }
 

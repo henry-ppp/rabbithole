@@ -70,9 +70,15 @@ describe("composeChildTopic", () => {
 
 describe("cacheKey", () => {
   it("is stable for same inputs", () => {
-    const a = cacheKey("Topic", "devs", "exam");
-    const b = cacheKey("Topic", "devs", "exam");
+    const a = cacheKey("Topic", "devs", "cheatsheet");
+    const b = cacheKey("Topic", "devs", "cheatsheet");
     assert.equal(a, b);
+  });
+
+  it("differs when style changes", () => {
+    const cheatsheet = cacheKey("Topic", "", "cheatsheet");
+    const roadmap = cacheKey("Topic", "", "roadmap");
+    assert.notEqual(cheatsheet, roadmap);
   });
 
   it("differs when topic changes", () => {

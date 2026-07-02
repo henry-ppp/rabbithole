@@ -1,8 +1,17 @@
 import { Agent, CursorAgentError } from "@cursor/sdk";
 import path from "node:path";
+import {
+  buildFallbackConceptGraphTree,
+  describeInvalidConceptGraphOutput,
+  parseConceptGraphMap,
+  parseConceptGraphWriterOutput,
+  validateConceptGraphTree,
+  type ConceptGraphMap,
+} from "./concept-graph";
 import type {
   CheatSheetMeta,
   CheatSheetResponse,
+  CoverageMap,
   CoverageSection,
   RenderNode,
 } from "./render-contract";
@@ -14,24 +23,40 @@ import {
   hasThreeLayerSection,
   parseCoverageMap,
   parseSectionWriterOutput,
+  sanitizeRenderNode,
   shortSectionTitle,
   validateRenderTree,
 } from "./render-contract";
-import { loadPlaybook } from "./playbooks";
+import {
+  loadStylePlaybooks,
+  normalizeStyle,
+  type KnowledgeStyle,
+} from "./styles";
+import {
+  responseWithoutStage,
+  responseWithStage,
+  safeEmit,
+  type StreamEmit,
+} from "./stream-events";
 
 export type GenerateOptions = {
   topic: string;
   audience?: string;
+  style?: string;
+  /** @deprecated use style */
   depth?: string;
   parentContext?: string;
 };
 
-/** Sequential-ish to reduce truncated parallel agent responses. */
 const WRITER_CONCURRENCY = 2;
 
-const JSON_RETRY_SUFFIX = `
+const CHEATSHEET_JSON_RETRY_SUFFIX = `
 
 IMPORTANT: Return ONLY one complete, valid JSON value. No markdown fences, no commentary before or after, no trailing commas. The coverage map must have exactly one section with 3–5 modules (each with required group: What|How|When|Watch|Compare), plain-English question labels, and 1–2 anchors per module. No section-level anchors.`;
+
+const ROADMAP_JSON_RETRY_SUFFIX = `
+
+IMPORTANT: Return ONLY one complete, valid JSON concept graph. No markdown fences. Must include graph.nodes (5–10) and graph.edges forming a DAG. Layer 0 = foundational roots. Plain-English question labels.`;
 
 const SECTION_WRITER_RETRY_SUFFIX = `
 
@@ -54,29 +79,29 @@ const SECTION_WRITER_TEMPLATE_SUFFIX = `
 Return ONLY this JSON shape (fill in; stay under 2500 characters total):
 {"kind":"section","props":{"title":"SHORT_TITLE_HERE"},"layout":{"density":"compact"},"children":[{"kind":"text","props":{"content":"GOAL_HERE"}},{"kind":"module","props":{"id":"m1","label":"How do I do the main task?","hint":"alias","group":"How"},"children":[{"kind":"anchor","props":{"id":"a1","label":"Which step comes first?","teachGoal":"Start with the setup command."},"children":[{"kind":"table","props":{"headers":["Command","What it does"],"rows":[["cmd","outcome"]]}}]}]}]}`;
 
-function buildFramingBlock(audience?: string, depth?: string): string {
+const GRAPH_WRITER_RETRY_SUFFIX = `
+
+IMPORTANT: Return ONE conceptGraph JSON. Root kind "conceptGraph" with props.edges and conceptNode children (each with id, label, layer, teachGoal, table child). Max 10 nodes. Valid JSON only.`;
+
+const GRAPH_WRITER_TEMPLATE_SUFFIX = `
+
+Return ONLY this JSON shape (fill in; stay under 4000 characters):
+{"kind":"conceptGraph","props":{"title":"TITLE","subtitle":"TOPIC","edges":[{"from":"n1","to":"n2","relation":"requires"}]},"children":[{"kind":"conceptNode","props":{"id":"n1","label":"What is the foundation?","teachGoal":"One sentence.","layer":0},"children":[{"kind":"table","props":{"headers":["Term","Meaning"],"rows":[["a","b"]]}}]}]}`;
+
+function buildFramingBlock(audience: string | undefined, style: KnowledgeStyle): string {
   const audienceLine =
     audience?.trim() ||
     "Learner studying this topic for the first time; assume no insider vocabulary in titles.";
 
-  let depthLine =
-    "Balance question labels with compact tables; all five question frames (What, How, When, Watch, Compare) are eligible.";
-  switch (depth?.trim()) {
-    case "exam":
-      depthLine =
-        "Prioritize What, Compare, and Watch frames; tables emphasize triggers, distinctions, and common mistakes.";
-      break;
-    case "on-call":
-      depthLine =
-        "Prioritize How, When, and Watch frames; tables emphasize commands and decision rules.";
-      break;
-    default:
-      break;
+  if (style === "roadmap") {
+    return `Audience: ${audienceLine}
+Style: Interactive concept roadmap — show how ideas build on each other as a directed graph.
+Labeling: plain-English question labels on nodes; layer 0 = foundations at the top.`;
   }
 
   return `Audience: ${audienceLine}
-Depth framing: ${depthLine}
-Labeling: module labels must be plain-English questions; group must be What|How|When|Watch|Compare; hint holds the technical alias only.`;
+Style: Cheat sheet — compact lookup tables organized by question frames (What|How|When|Watch|Compare).
+Labeling: module labels must be plain-English questions; hint holds the technical alias only.`;
 }
 
 function getApiKey(): string {
@@ -164,7 +189,7 @@ async function runAgentPromptForJson(
   meta: CheatSheetMeta,
   options?: { retrySuffix?: string; strictRetrySuffix?: string },
 ): Promise<unknown> {
-  const retrySuffix = options?.retrySuffix ?? JSON_RETRY_SUFFIX;
+  const retrySuffix = options?.retrySuffix ?? CHEATSHEET_JSON_RETRY_SUFFIX;
   const strictRetrySuffix = options?.strictRetrySuffix;
 
   let text = await runAgentPrompt(label, prompt, meta);
@@ -280,6 +305,54 @@ async function runSectionWriter(
   return fallback;
 }
 
+async function runGraphWriter(
+  label: string,
+  basePrompt: string,
+  graphMap: ConceptGraphMap,
+  meta: CheatSheetMeta,
+): Promise<RenderNode> {
+  const attempts: Array<{ label: string; prompt: string }> = [
+    { label, prompt: basePrompt },
+    { label: `${label} (json-retry)`, prompt: `${basePrompt}${GRAPH_WRITER_RETRY_SUFFIX}` },
+    {
+      label: `${label} (template)`,
+      prompt: `${basePrompt}${GRAPH_WRITER_TEMPLATE_SUFFIX.replace("TOPIC", graphMap.topic).replace("TITLE", graphMap.title)}`,
+    },
+  ];
+
+  let lastError = "unknown error";
+
+  for (let index = 0; index < attempts.length; index += 1) {
+    if (index > 0) {
+      recordRetrial(meta);
+    }
+    const attempt = attempts[index]!;
+    const text = await runAgentPrompt(attempt.label, attempt.prompt, meta);
+    try {
+      const raw = parseAgentJson(attempt.label, text);
+      const node = parseConceptGraphWriterOutput(raw, sanitizeRenderNode);
+      if (node) {
+        return node;
+      }
+      lastError = describeInvalidConceptGraphOutput(raw);
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  const fallback = buildFallbackConceptGraphTree(graphMap);
+  meta.warnings ??= [];
+  meta.warnings.push(
+    `Concept graph used programmatic fallback after agent failures: ${lastError}`,
+  );
+  meta.phases.push({
+    name: `${label} (fallback)`,
+    status: "ok",
+    error: lastError,
+  });
+  return fallback;
+}
+
 async function mapWithConcurrency<T, R>(
   items: T[],
   concurrency: number,
@@ -301,28 +374,70 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export async function generateCheatSheet(
+function emitPhase(
+  emit: StreamEmit | undefined,
+  name: string,
+  status: "start" | "ok",
+): void {
+  if (!emit) return;
+  safeEmit(emit, { type: "phase", name, status });
+}
+
+function emitPartial(
+  emit: StreamEmit | undefined,
+  response: CheatSheetResponse,
+  stage: "skeleton" | "final",
+): void {
+  if (!emit) return;
+  const staged = responseWithStage(response, stage);
+  safeEmit(emit, {
+    type: "partial",
+    stage,
+    tree: staged.tree,
+    meta: staged.meta,
+  });
+}
+
+/** Build a renderable skeleton from planner coverage output. */
+export function buildCheatsheetSkeletonResponse(
+  coverageMap: CoverageMap,
+  meta: CheatSheetMeta,
+): CheatSheetResponse {
+  const sectionNodes = coverageMap.sections.map((section) =>
+    buildFallbackSectionNode(section),
+  );
+  return responseWithStage(
+    { tree: assembleCheatSheetTree(coverageMap, sectionNodes), meta },
+    "skeleton",
+  );
+}
+
+/** Build a renderable skeleton from roadmap planner output. */
+export function buildRoadmapSkeletonResponse(
+  graphMap: ConceptGraphMap,
+  meta: CheatSheetMeta,
+): CheatSheetResponse {
+  return responseWithStage(
+    { tree: buildFallbackConceptGraphTree(graphMap), meta },
+    "skeleton",
+  );
+}
+
+async function generateCheatsheetStyle(
   options: GenerateOptions,
+  style: KnowledgeStyle,
+  meta: CheatSheetMeta,
+  emit?: StreamEmit,
 ): Promise<CheatSheetResponse> {
-  const meta: CheatSheetMeta = {
-    source: "agent",
-    phases: [],
-    retrialCount: 0,
-  };
-
-  const [coveragePlaybook, writerPlaybook] = await Promise.all([
-    loadPlaybook("coverage"),
-    loadPlaybook("writer"),
-  ]);
-
-  const framingBlock = buildFramingBlock(options.audience, options.depth);
+  const playbooks = await loadStylePlaybooks(style);
+  const framingBlock = buildFramingBlock(options.audience, style);
 
   const parentContext = options.parentContext?.trim().slice(0, 500);
   const parentLine = parentContext
     ? `\nParent context: User drilled from "${parentContext}". Focus the outline on the module topic below; assign 1–2 anchors per module and split remaining coverage into 3–5 question-framed child modules (group: What|How|When|Watch|Compare). No section-level anchors.\n`
     : "\nAt this root level, produce exactly one section with goal framing only. Split the topic into 3–5 question-framed modules; each module gets a required group and 1–2 anchors with plain-English labels. No section-level anchors.\n";
 
-  const plannerPrompt = `${coveragePlaybook}
+  const plannerPrompt = `${playbooks.coverage}
 
 ---
 ${parentLine}
@@ -332,6 +447,7 @@ ${framingBlock}
 
 Return only the coverage map JSON.`;
 
+  emitPhase(emit, "planner", "start");
   const coverageRaw = await runAgentPromptForJson(
     "planner",
     plannerPrompt,
@@ -346,13 +462,18 @@ Return only the coverage map JSON.`;
   if (parsed.sectionsTruncated) {
     meta.sectionsTruncated = true;
   }
+  emitPhase(emit, "planner", "ok");
 
+  const skeleton = buildCheatsheetSkeletonResponse(coverageMap, meta);
+  emitPartial(emit, skeleton, "skeleton");
+
+  emitPhase(emit, "section-writer", "start");
   const sectionNodes = await mapWithConcurrency(
     coverageMap.sections,
     WRITER_CONCURRENCY,
     async (section: CoverageSection, index: number) => {
       const threeLayer = hasThreeLayerSection(section);
-      const writerPrompt = `${writerPlaybook}
+      const writerPrompt = `${playbooks.writer}
 
 ---
 
@@ -372,6 +493,7 @@ ${JSON.stringify(sectionPayloadForWriter(section), null, 2)}`;
       return runSectionWriter(label, writerPrompt, section, meta);
     },
   );
+  emitPhase(emit, "section-writer", "ok");
 
   if (sectionNodes.length !== coverageMap.sections.length) {
     throw new Error(
@@ -380,17 +502,140 @@ ${JSON.stringify(sectionPayloadForWriter(section), null, 2)}`;
   }
 
   const tree = assembleCheatSheetTree(coverageMap, sectionNodes);
-  meta.phases.push({
-    name: "layout-assembler",
-    status: "ok",
-  });
+  meta.phases.push({ name: "layout-assembler", status: "ok" });
 
   const validation = validateRenderTree(tree);
   if (!validation.ok) {
     throw new Error(validation.error ?? "Invalid render tree");
   }
 
-  return { tree, meta };
+  const response: CheatSheetResponse = { tree, meta };
+  emitPartial(emit, response, "final");
+  return response;
+}
+
+async function generateRoadmapStyle(
+  options: GenerateOptions,
+  meta: CheatSheetMeta,
+  emit?: StreamEmit,
+): Promise<CheatSheetResponse> {
+  const playbooks = await loadStylePlaybooks("roadmap");
+  const framingBlock = buildFramingBlock(options.audience, "roadmap");
+
+  const plannerPrompt = `${playbooks.coverage}
+
+---
+Topic: ${options.topic}
+
+${framingBlock}
+
+Return only the concept graph JSON.`;
+
+  emitPhase(emit, "roadmap-planner", "start");
+  const graphRaw = await runAgentPromptForJson("roadmap-planner", plannerPrompt, meta, {
+    retrySuffix: ROADMAP_JSON_RETRY_SUFFIX,
+  });
+
+  const parsed = parseConceptGraphMap(graphRaw);
+  if (!parsed) {
+    throw new Error("Roadmap planner returned invalid concept graph JSON");
+  }
+
+  const graphMap = parsed.map;
+  meta.conceptGraph = graphMap;
+  emitPhase(emit, "roadmap-planner", "ok");
+
+  const skeleton = buildRoadmapSkeletonResponse(graphMap, meta);
+  emitPartial(emit, skeleton, "skeleton");
+
+  emitPhase(emit, "graph-writer", "start");
+  const writerPrompt = `${playbooks.writer}
+
+---
+
+Topic: ${graphMap.topic}
+Graph title: ${graphMap.title}
+
+${framingBlock}
+
+Write one conceptGraph RenderNode for the graph below. Return only that JSON (no markdown fences).
+
+Graph:
+${JSON.stringify(graphMap, null, 2)}`;
+
+  const tree = await runGraphWriter("graph-writer", writerPrompt, graphMap, meta);
+  meta.phases.push({ name: "graph-assembler", status: "ok" });
+  emitPhase(emit, "graph-writer", "ok");
+
+  const countValidation = validateRenderTree(tree);
+  if (!countValidation.ok) {
+    throw new Error(countValidation.error ?? "Invalid render tree");
+  }
+
+  const graphValidation = validateConceptGraphTree(tree);
+  if (!graphValidation.ok) {
+    throw new Error(graphValidation.error ?? "Invalid concept graph");
+  }
+
+  const response: CheatSheetResponse = { tree, meta };
+  emitPartial(emit, response, "final");
+  return response;
+}
+
+export async function generateCheatSheetStream(
+  options: GenerateOptions,
+  emit: StreamEmit,
+): Promise<CheatSheetResponse> {
+  const style = normalizeStyle(options.style ?? options.depth);
+  const meta: CheatSheetMeta = {
+    source: "agent",
+    style,
+    phases: [],
+    retrialCount: 0,
+  };
+
+  let response: CheatSheetResponse;
+
+  if (style === "roadmap") {
+    if (options.parentContext?.trim()) {
+      throw new Error("Roadmap style does not support drill-down; generate at root level only.");
+    }
+    response = await generateRoadmapStyle(options, meta, emit);
+  } else {
+    response = await generateCheatsheetStyle(options, style, meta, emit);
+  }
+
+  const final = responseWithoutStage(response);
+  safeEmit(emit, {
+    type: "done",
+    tree: final.tree,
+    meta: final.meta,
+  });
+  return final;
+}
+
+export async function generateCheatSheet(
+  options: GenerateOptions,
+): Promise<CheatSheetResponse> {
+  let result: CheatSheetResponse | null = null;
+  let streamError: string | null = null;
+
+  await generateCheatSheetStream(options, (event) => {
+    if (event.type === "done") {
+      result = { tree: event.tree, meta: event.meta };
+    }
+    if (event.type === "error") {
+      streamError = event.message;
+    }
+  });
+
+  if (streamError) {
+    throw new Error(streamError);
+  }
+  if (!result) {
+    throw new Error("Generation completed without result");
+  }
+  return result;
 }
 
 export function getRepoRoot(): string {

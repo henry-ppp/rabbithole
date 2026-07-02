@@ -17,8 +17,15 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) and go to **Cheat sheet canvas**, or visit [http://localhost:3000/cheat-sheet](http://localhost:3000/cheat-sheet).
 
-- **Load fixture** — preview the Git rebase sample without an API key.
-- **Generate** — runs the planner → per-section writers → programmatic layout via `@cursor/sdk`.
+- **Load fixture** — preview the Git rebase sample (cheat sheet or roadmap, depending on Style).
+- **Generate** — runs style-specific planners and writers via `@cursor/sdk`.
+
+Choose **Style** in the UI:
+
+| Style | Purpose |
+|-------|---------|
+| Cheat sheet | Lookup tables with question frames; supports drill-down |
+| Roadmap | Interactive concept graph on the canvas; no drill-down |
 
 ## Scripts
 
@@ -31,7 +38,14 @@ pnpm test:cheat-sheet:json   # JSON extract / layout unit tests (no API key)
 pnpm test:cheat-sheet:e2e    # full agent pipeline (requires CURSOR_API_KEY in .env)
 ```
 
-E2E options: `pnpm test:cheat-sheet:e2e -- --topic "cfa level 2" --depth exam`
+E2E options:
+
+```bash
+pnpm test:cheat-sheet:e2e -- --topic "git rebase" --style cheatsheet
+pnpm test:cheat-sheet:e2e -- --topic "git rebase" --style roadmap
+```
+
+Legacy `--depth` is accepted and maps to cheat sheet style.
 
 ## Environment
 

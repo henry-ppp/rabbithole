@@ -1,20 +1,17 @@
+import { layoutPlaybook } from "./playbook-content";
 import {
-  coveragePlaybook,
-  layoutPlaybook,
-  writerPlaybook,
-} from "./playbook-content";
+  loadStylePlaybooks,
+  type KnowledgeStyle,
+} from "./styles";
 
 export async function loadPlaybook(
   name: "coverage" | "writer" | "layout",
+  style: KnowledgeStyle = "cheatsheet",
 ): Promise<string> {
-  switch (name) {
-    case "coverage":
-      return coveragePlaybook;
-    case "writer":
-      return writerPlaybook;
-    case "layout":
-      return layoutPlaybook;
-    default:
-      throw new Error(`Unknown playbook: ${name}`);
+  if (name === "layout") {
+    return layoutPlaybook;
   }
+
+  const playbooks = await loadStylePlaybooks(style);
+  return name === "coverage" ? playbooks.coverage : playbooks.writer;
 }

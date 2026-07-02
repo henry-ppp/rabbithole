@@ -114,6 +114,7 @@ You are a **section writer** for a technical cheat sheet. You emit one three-lay
 - Emit a single **RenderNode** subtree (JSON only, no markdown fences) with \`"kind": "section"\` at the root.
 - **One section per sheet** — the assembler places it full-width.
 - **Only module headers are drillable** — anchor blocks are read-only teaching content.
+- **Modules render collapsed by default** — the module title + hint must stand alone; anchors and tables appear only after expand.
 - Titles use **plain-English questions**; jargon lives in table cells and \`hint\` badges.
 
 ## Section anatomy (max 6 children)

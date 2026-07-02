@@ -1,9 +1,11 @@
-import type { CheatSheetResponse } from "./render-contract";
+import type { CheatSheetResponse, RenderNode } from "./render-contract";
+import type { KnowledgeStyle } from "./styles";
 
 /** Hand-authored flexible tree for renderer/viewport development without API calls. */
 export const gitRebaseFixture: CheatSheetResponse = {
   meta: {
     source: "fixture",
+    style: "cheatsheet",
     phases: [{ name: "fixture", status: "ok" }],
     coverageMap: {
       topic: "Git rebase",
@@ -321,3 +323,302 @@ export const gitRebaseFixture: CheatSheetResponse = {
     ],
   },
 };
+
+export const gitRebaseRoadmapFixture: CheatSheetResponse = {
+  meta: {
+    source: "fixture",
+    style: "roadmap",
+    phases: [{ name: "fixture", status: "ok" }],
+    conceptGraph: {
+      topic: "Git rebase",
+      title: "Git Rebase — Concept Map",
+      nodes: [
+        {
+          id: "commits",
+          label: "Commit chain",
+          hint: "commits",
+          layer: 0,
+          mustCover: ["commit", "branch", "tip"],
+          teachGoal: "Snapshots linked in a chain; branches point at tips.",
+        },
+        {
+          id: "merge",
+          label: "Merge vs rebase",
+          hint: "merge",
+          layer: 1,
+          mustCover: ["merge", "rebase", "linear history"],
+          teachGoal: "Merge joins tips; rebase replays for a linear history.",
+        },
+        {
+          id: "rebase",
+          label: "Rebase",
+          hint: "git rebase",
+          layer: 1,
+          mustCover: ["replay commits", "new base"],
+          teachGoal: "Replays your commits onto another branch tip.",
+        },
+        {
+          id: "interactive",
+          label: "Rewrite commits",
+          hint: "rebase -i",
+          layer: 2,
+          mustCover: ["pick", "squash", "HEAD~n"],
+          teachGoal: "Interactive rebase edits the commit list before replay.",
+        },
+        {
+          id: "conflicts",
+          label: "Conflicts",
+          hint: "--abort",
+          layer: 2,
+          mustCover: ["--abort", "--continue", "resolve"],
+          teachGoal: "Resolve conflicts, then continue; abort to cancel.",
+        },
+        {
+          id: "onto",
+          label: "Transplant commits",
+          hint: "--onto",
+          layer: 3,
+          mustCover: ["--onto", "upstream", "new base"],
+          teachGoal: "Replay a slice of commits onto a new base branch.",
+        },
+      ],
+      edges: [
+        { from: "commits", to: "merge", relation: "requires" },
+        { from: "commits", to: "rebase", relation: "requires" },
+        { from: "rebase", to: "interactive", relation: "leads-to" },
+        { from: "rebase", to: "conflicts", relation: "leads-to" },
+        { from: "interactive", to: "onto", relation: "builds-on" },
+        { from: "conflicts", to: "onto", relation: "builds-on" },
+      ],
+    },
+  },
+  tree: {
+    kind: "conceptGraph",
+    props: {
+      title: "Git Rebase — Concept Map",
+      subtitle: "Git rebase",
+      edges: [
+        { from: "commits", to: "merge", relation: "requires" },
+        { from: "commits", to: "rebase", relation: "requires" },
+        { from: "rebase", to: "interactive", relation: "leads-to" },
+        { from: "rebase", to: "conflicts", relation: "leads-to" },
+        { from: "interactive", to: "onto", relation: "builds-on" },
+        { from: "conflicts", to: "onto", relation: "builds-on" },
+      ],
+    },
+    children: [
+      {
+        kind: "conceptNode",
+        props: {
+          id: "commits",
+          label: "Commit chain",
+          hint: "commits",
+          layer: 0,
+          teachGoal: "Snapshots linked in a chain; branches point at tips.",
+        },
+        children: [
+          {
+            kind: "list",
+            props: { items: ["commit", "branch", "tip"] },
+          },
+        ],
+      },
+      {
+        kind: "conceptNode",
+        props: {
+          id: "merge",
+          label: "Merge vs rebase",
+          hint: "merge",
+          layer: 1,
+          teachGoal: "Merge joins tips; rebase replays for a linear history.",
+        },
+        children: [
+          {
+            kind: "list",
+            props: { items: ["merge", "rebase", "linear history"] },
+          },
+        ],
+      },
+      {
+        kind: "conceptNode",
+        props: {
+          id: "rebase",
+          label: "Rebase",
+          hint: "git rebase",
+          layer: 1,
+          teachGoal: "Replays your commits onto another branch tip.",
+        },
+        children: [
+          {
+            kind: "list",
+            props: { items: ["replay commits", "new base", "git rebase main"] },
+          },
+        ],
+      },
+      {
+        kind: "conceptNode",
+        props: {
+          id: "interactive",
+          label: "Rewrite commits",
+          hint: "rebase -i",
+          layer: 2,
+          teachGoal: "Interactive rebase edits the commit list before replay.",
+        },
+        children: [
+          {
+            kind: "list",
+            props: { items: ["pick", "squash", "HEAD~n"] },
+          },
+        ],
+      },
+      {
+        kind: "conceptNode",
+        props: {
+          id: "conflicts",
+          label: "Conflicts",
+          hint: "--abort",
+          layer: 2,
+          teachGoal: "Resolve conflicts, then continue; abort to cancel.",
+        },
+        children: [
+          {
+            kind: "list",
+            props: { items: ["--abort", "--continue", "resolve"] },
+          },
+        ],
+      },
+      {
+        kind: "conceptNode",
+        props: {
+          id: "onto",
+          label: "Transplant commits",
+          hint: "--onto",
+          layer: 3,
+          teachGoal: "Replay a slice of commits onto a new base branch.",
+        },
+        children: [
+          {
+            kind: "list",
+            props: { items: ["--onto", "upstream", "new base"] },
+          },
+        ],
+      },
+    ],
+  },
+};
+
+function cfaConceptNode(
+  id: string,
+  label: string,
+  hint: string,
+  layer: number,
+  teachGoal: string,
+  keyTerms: string[],
+): RenderNode {
+  return {
+    kind: "conceptNode",
+    props: { id, label, hint, layer, teachGoal },
+    children: [{ kind: "list", props: { items: keyTerms } }],
+  };
+}
+
+/** Eight-node CFA-style graph for layout/edge clarity tests. */
+export const cfaLevel3RoadmapFixture: CheatSheetResponse = {
+  meta: {
+    source: "fixture",
+    style: "roadmap",
+    phases: [{ name: "fixture", status: "ok" }],
+  },
+  tree: {
+    kind: "conceptGraph",
+    props: {
+      title: "CFA Level 3 — Concept Map",
+      subtitle: "CFA Level 3",
+      edges: [
+        { from: "return-expectations", to: "asset-allocation", relation: "requires" },
+        { from: "behavioral-finance", to: "asset-allocation", relation: "requires" },
+        { from: "investment-policy", to: "risk-management", relation: "requires" },
+        { from: "asset-allocation", to: "portfolio-construction", relation: "leads-to" },
+        { from: "risk-management", to: "portfolio-construction", relation: "leads-to" },
+        { from: "portfolio-construction", to: "performance-review", relation: "leads-to" },
+        { from: "portfolio-construction", to: "client-portfolios", relation: "leads-to" },
+      ],
+    },
+    children: [
+      cfaConceptNode(
+        "return-expectations",
+        "Return expectations",
+        "forecasts",
+        0,
+        "Capital market assumptions drive return forecasts.",
+        ["forecasts", "CMA", "expected return"],
+      ),
+      cfaConceptNode(
+        "behavioral-finance",
+        "Behavioral finance",
+        "investor bias",
+        0,
+        "Biases explain gaps between models and decisions.",
+        ["biases", "prospect theory", "overconfidence"],
+      ),
+      cfaConceptNode(
+        "investment-policy",
+        "Investment policy",
+        "IPS",
+        0,
+        "The IPS defines objectives and constraints.",
+        ["IPS", "objectives", "constraints"],
+      ),
+      cfaConceptNode(
+        "asset-allocation",
+        "Asset allocation",
+        "policy mix",
+        1,
+        "Strategic mix implements policy across asset classes.",
+        ["SAA", "TAA", "policy mix"],
+      ),
+      cfaConceptNode(
+        "risk-management",
+        "Risk management",
+        "risk budget",
+        1,
+        "Risk budgets align exposures with policy limits.",
+        ["VaR", "risk budget", "drawdown"],
+      ),
+      cfaConceptNode(
+        "portfolio-construction",
+        "Portfolio construction",
+        "holdings mix",
+        2,
+        "Holdings implement allocation with constraints.",
+        ["holdings", "constraints", "taxes"],
+      ),
+      cfaConceptNode(
+        "performance-review",
+        "Performance review",
+        "attribution",
+        3,
+        "Attribution explains return versus policy.",
+        ["attribution", "benchmark", "review"],
+      ),
+      cfaConceptNode(
+        "client-portfolios",
+        "Client portfolios",
+        "wealth plans",
+        3,
+        "Individual plans apply the framework to clients.",
+        ["IPS", "goals", "rebalance"],
+      ),
+    ],
+  },
+};
+
+export function getFixtureForStyle(style: KnowledgeStyle): CheatSheetResponse {
+  switch (style) {
+    case "roadmap":
+      return gitRebaseRoadmapFixture;
+    case "cheatsheet":
+    default:
+      return gitRebaseFixture;
+  }
+}
