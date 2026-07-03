@@ -52,3 +52,8 @@ Legacy `--depth` is accepted and maps to cheat sheet style.
 | Variable | Description |
 |----------|-------------|
 | `CURSOR_API_KEY` | Server-only; required for agent generation |
+| `CURSOR_AGENT_RUNTIME` | Optional: `local` (default) or `cloud` |
+
+### Vercel
+
+Local agents need a writable `HOME`. On Vercel, `lib/agent-client.ts` redirects `HOME` and `TMPDIR` to `/tmp` at startup (dashboard `HOME` overrides are blocked). Set `CURSOR_API_KEY` in project env vars. The Linux native SDK binary (`@cursor/sdk-linux-x64`) is bundled via `serverExternalPackages`. Agent state in `/tmp` is ephemeral per invocation.

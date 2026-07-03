@@ -1,3 +1,4 @@
+import { buildAgentOptions } from "@/lib/agent-client";
 import { Agent, CursorAgentError } from "@cursor/sdk";
 import path from "node:path";
 import {
@@ -130,17 +131,6 @@ function getApiKey(): string {
   return key.trim();
 }
 
-function agentOptions(apiKey: string) {
-  return {
-    apiKey,
-    model: { id: "composer-2" as const },
-    local: {
-      cwd: process.cwd(),
-      settingSources: [],
-    },
-  };
-}
-
 async function runAgentPrompt(
   label: string,
   prompt: string,
@@ -152,7 +142,7 @@ async function runAgentPrompt(
   let agent: Awaited<ReturnType<typeof Agent.create>> | null = null;
 
   try {
-    agent = await Agent.create(agentOptions(apiKey));
+    agent = await Agent.create(buildAgentOptions(apiKey));
     throwIfAborted(signal);
 
     const run = await agent.send(prompt);

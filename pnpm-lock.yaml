@@ -11,6 +11,9 @@ importers:
       '@cursor/sdk':
         specifier: ^1.0.13
         version: 1.0.13
+      '@cursor/sdk-linux-x64':
+        specifier: 1.0.13
+        version: 1.0.13
       '@xyflow/react':
         specifier: ^12.11.1
         version: 12.11.1(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -3129,8 +3132,7 @@ snapshots:
   '@cursor/sdk-linux-arm64@1.0.13':
     optional: true
 
-  '@cursor/sdk-linux-x64@1.0.13':
-    optional: true
+  '@cursor/sdk-linux-x64@1.0.13': {}
 
   '@cursor/sdk-win32-x64@1.0.13':
     optional: true

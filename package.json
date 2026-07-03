@@ -8,11 +8,12 @@
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint",
-    "test:cheat-sheet:json": "tsx --test lib/cheat-sheet/json-extract.test.ts lib/cheat-sheet/navigation.test.ts lib/cheat-sheet/math-render.test.ts lib/cheat-sheet/concept-graph.test.ts lib/cheat-sheet/concept-flow.test.ts lib/cheat-sheet/stream.test.ts",
+    "test:cheat-sheet:json": "tsx --test lib/agent-client.test.ts lib/cheat-sheet/json-extract.test.ts lib/cheat-sheet/navigation.test.ts lib/cheat-sheet/math-render.test.ts lib/cheat-sheet/concept-graph.test.ts lib/cheat-sheet/concept-flow.test.ts lib/cheat-sheet/stream.test.ts",
     "test:cheat-sheet:e2e": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/cheat-sheet-e2e.ts"
   },
   "dependencies": {
     "@cursor/sdk": "^1.0.13",
+    "@cursor/sdk-linux-x64": "1.0.13",
     "@xyflow/react": "^12.11.1",
     "jsonrepair": "^3.14.0",
     "katex": "^0.17.0",
