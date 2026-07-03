@@ -12,9 +12,9 @@ export function landingCopy(style: KnowledgeStyle): LandingCopy {
     return {
       headline: "What should we map out?",
       instruction:
-        "Enter a subject and we'll build a concept graph — key topics, prerequisites, and how they connect.",
+        "Enter a subject and we'll build a concept graph of key topics, prerequisites, and how they connect.",
       placeholder:
-        'Try "Machine learning", "Web development", or "Product management"…',
+        'Try "Evolutionary biology", "Macroeconomics", or "Political theory"…',
       hint: "Press Enter or click Generate. Click nodes to expand key terms and see prerequisites.",
     };
   }
@@ -22,8 +22,8 @@ export function landingCopy(style: KnowledgeStyle): LandingCopy {
   return {
     headline: "What do you want to learn?",
     instruction:
-      "Enter a topic or keyword — we'll turn it into a visual cheat sheet you can explore and drill into.",
-    placeholder: 'Try "Git rebase", "React useEffect", or "TCP handshake"…',
+      "Enter a topic or keyword. We'll turn it into a visual cheat sheet you can explore and drill into.",
+    placeholder: 'Try "Organic chemistry", "Constitutional law", or "Linear algebra"…',
     hint: "Press Enter or click Generate. Click module titles on the canvas to go deeper.",
   };
 }

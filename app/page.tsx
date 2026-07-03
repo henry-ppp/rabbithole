@@ -18,12 +18,12 @@ const FEATURES = [
   {
     title: "Two formats",
     description:
-      "Cheat sheets for scannable reference with drill-down. Concept graphs for how ideas connect and build on each other.",
+      "Cheat sheets for scannable reference with drill down. Concept graphs for how ideas connect and build on each other.",
   },
   {
     title: "Explore deeper",
     description:
-      "Click module titles to branch into focused sub-sheets, or expand concept nodes to reveal key terms.",
+      "Click module titles to branch into focused sub sheets, or expand concept nodes to reveal key terms.",
   },
 ] as const;
 
@@ -58,7 +58,7 @@ export default function HomePage() {
           <div className="flex w-full max-w-2xl flex-col items-center gap-8">
             <div className="space-y-4 text-center">
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-zinc-400">
-                Agent-orchestrated learning maps
+                Agent orchestrated learning maps
               </p>
               <h1 className="text-3xl font-medium tracking-tight text-zinc-900 sm:text-4xl dark:text-zinc-50">
                 {copy.headline}

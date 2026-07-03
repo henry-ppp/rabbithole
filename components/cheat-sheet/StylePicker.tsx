@@ -23,7 +23,7 @@ export function StylePicker({
     <div
       role="radiogroup"
       aria-label="Format"
-      className={`inline-flex rounded-full bg-zinc-100/90 p-0.5 dark:bg-zinc-900/80 ${className}`}
+      className={`inline-flex rounded-full border border-zinc-200/90 bg-zinc-200/60 p-1 dark:border-zinc-700 dark:bg-zinc-800 ${className}`}
     >
       {KNOWLEDGE_STYLES.map((style) => {
         const selected = value === style;
@@ -34,14 +34,14 @@ export function StylePicker({
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(style)}
-            className={`rounded-full font-medium transition-colors ${
+            className={`rounded-full transition-all ${
               size === "sm"
                 ? "px-3 py-1.5 text-xs"
                 : "px-3.5 py-1.5 text-sm"
             } ${
               selected
-                ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-zinc-50"
-                : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+                ? "bg-white font-semibold text-zinc-900 shadow-[0_1px_3px_rgba(15,23,42,0.12)] ring-1 ring-zinc-950/5 dark:bg-zinc-600 dark:text-zinc-50 dark:ring-zinc-500/40 dark:shadow-none"
+                : "font-medium text-zinc-600 hover:bg-zinc-300/45 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700/70 dark:hover:text-zinc-200"
             }`}
           >
             {styleLabel(style)}
