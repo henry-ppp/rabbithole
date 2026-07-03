@@ -19,7 +19,7 @@ import {
 import { RenderNodeView } from "@/lib/cheat-sheet/render-node";
 import {
   fetchCheatSheetStream,
-  generationStatusLabel,
+  streamingStatusLabel,
 } from "@/lib/cheat-sheet/stream-client";
 import type { CheatSheetStreamEvent } from "@/lib/cheat-sheet/stream-events";
 import {
@@ -64,7 +64,6 @@ function CheatSheetWorkspace() {
   const [depthLimitMessage, setDepthLimitMessage] = useState<string | null>(
     null,
   );
-  const [activePhase, setActivePhase] = useState<string | null>(null);
 
   const sessionCache = useRef(new Map<string, CheatSheetResponse>());
   const streamAbortRef = useRef<AbortController | null>(null);
@@ -80,11 +79,7 @@ function CheatSheetWorkspace() {
   const isStreamingSkeleton =
     loading && activeResponse?.meta.streamingStage === "skeleton";
   const loadingMessage =
-    generationStatusLabel({
-      activePhase,
-      streamingStage: activeResponse?.meta.streamingStage,
-      style: activeStyle,
-    }) ??
+    streamingStatusLabel(activeResponse?.meta.streamingStage, activeStyle) ??
     (activeStyle === "roadmap"
       ? "Planning concept graph…"
       : "Planning outline…");
@@ -108,15 +103,8 @@ function CheatSheetWorkspace() {
 
       setLoading(true);
       setError(null);
-      setActivePhase(null);
 
       const handleEvent = (event: CheatSheetStreamEvent) => {
-        if (event.type === "phase") {
-          if (event.status === "start") {
-            setActivePhase(event.name);
-          }
-          return;
-        }
         if (event.type !== "partial" && event.type !== "done") return;
         const response = { tree: event.tree, meta: event.meta };
         if (event.type === "done") {
@@ -149,7 +137,6 @@ function CheatSheetWorkspace() {
         if (streamAbortRef.current === controller) {
           streamAbortRef.current = null;
         }
-        setActivePhase(null);
         setLoading(false);
       }
     },

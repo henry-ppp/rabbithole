@@ -115,38 +115,6 @@ export function parseNdjsonEvents(text: string): CheatSheetStreamEvent[] {
     .map((line) => JSON.parse(line) as CheatSheetStreamEvent);
 }
 
-export function phaseStatusLabel(
-  phase: string | null | undefined,
-  style: KnowledgeStyle,
-): string | null {
-  if (!phase) return null;
-
-  switch (phase) {
-    case "planner":
-      return "Planning outline…";
-    case "roadmap-planner":
-      return "Planning concept graph…";
-    case "section-writer":
-      return "Writing sections…";
-    case "graph-writer":
-    case "writer":
-      return style === "roadmap" ? "Writing content…" : "Writing sections…";
-    default:
-      return null;
-  }
-}
-
-export function generationStatusLabel(options: {
-  activePhase?: string | null;
-  streamingStage?: CheatSheetResponse["meta"]["streamingStage"];
-  style: KnowledgeStyle;
-}): string | null {
-  return (
-    phaseStatusLabel(options.activePhase, options.style) ??
-    streamingStatusLabel(options.streamingStage, options.style)
-  );
-}
-
 export function streamingStatusLabel(
   stage: CheatSheetResponse["meta"]["streamingStage"] | undefined,
   style: KnowledgeStyle,

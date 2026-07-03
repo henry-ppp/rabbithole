@@ -6,12 +6,7 @@ import {
   buildCheatsheetSkeletonResponse,
   buildRoadmapSkeletonResponse,
 } from "./orchestrate";
-import {
-  generationStatusLabel,
-  parseNdjsonEvents,
-  phaseStatusLabel,
-  streamingStatusLabel,
-} from "./stream-client";
+import { parseNdjsonEvents, streamingStatusLabel } from "./stream-client";
 import {
   responseWithoutStage,
   responseWithStage,
@@ -114,26 +109,5 @@ describe("streamingStatusLabel", () => {
 
   it("returns null when not streaming", () => {
     assert.equal(streamingStatusLabel(undefined, "roadmap"), null);
-  });
-});
-
-describe("phaseStatusLabel", () => {
-  it("maps writer phases to user-facing copy", () => {
-    assert.equal(phaseStatusLabel("section-writer", "cheatsheet"), "Writing sections…");
-    assert.equal(phaseStatusLabel("graph-writer", "roadmap"), "Writing content…");
-    assert.equal(phaseStatusLabel("planner", "cheatsheet"), "Planning outline…");
-  });
-});
-
-describe("generationStatusLabel", () => {
-  it("prefers active phase over skeleton stage during section writing", () => {
-    assert.equal(
-      generationStatusLabel({
-        activePhase: "section-writer",
-        streamingStage: "skeleton",
-        style: "cheatsheet",
-      }),
-      "Writing sections…",
-    );
   });
 });

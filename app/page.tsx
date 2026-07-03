@@ -23,7 +23,7 @@ const FEATURES = [
   {
     title: "Explore deeper",
     description:
-      "Click module titles to branch into focused sub sheets, or expand concept nodes to reveal key terms.",
+      "Click module titles to branch into focused sub-sheets, or expand concept nodes to reveal key terms.",
   },
 ] as const;
 

@@ -11,7 +11,7 @@ import {
   validateConceptGraphTree,
 } from "./concept-graph";
 import { sanitizeRenderNode } from "./render-contract";
-import { normalizeStyle, styleSupportsDrill } from "./styles";
+import { normalizeStyle, styleLabel, styleSupportsDrill } from "./styles";
 
 describe("normalizeStyle", () => {
   it("defaults to cheatsheet", () => {
@@ -21,6 +21,11 @@ describe("normalizeStyle", () => {
 
   it("accepts roadmap", () => {
     assert.equal(normalizeStyle("roadmap"), "roadmap");
+  });
+
+  it("accepts concept-graph aliases", () => {
+    assert.equal(normalizeStyle("concept-graph"), "roadmap");
+    assert.equal(normalizeStyle("concept_graph"), "roadmap");
   });
 
   it("maps legacy depth values to cheatsheet", () => {
@@ -34,6 +39,13 @@ describe("styleSupportsDrill", () => {
   it("enables drill only for cheatsheet", () => {
     assert.equal(styleSupportsDrill("cheatsheet"), true);
     assert.equal(styleSupportsDrill("roadmap"), false);
+  });
+});
+
+describe("styleLabel", () => {
+  it("uses Concept graph for roadmap style", () => {
+    assert.equal(styleLabel("roadmap"), "Concept graph");
+    assert.equal(styleLabel("cheatsheet"), "Cheat sheet");
   });
 });
 
