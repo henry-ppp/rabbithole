@@ -99,7 +99,7 @@ describe("parseNdjsonEvents", () => {
 
 describe("streamingStatusLabel", () => {
   it("returns planning copy for skeleton stage", () => {
-    assert.equal(streamingStatusLabel("skeleton", "roadmap"), "Planning roadmap…");
+    assert.equal(streamingStatusLabel("skeleton", "roadmap"), "Planning concept graph…");
     assert.equal(streamingStatusLabel("skeleton", "cheatsheet"), "Planning outline…");
   });
 

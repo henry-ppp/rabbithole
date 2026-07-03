@@ -17,6 +17,13 @@ export function normalizeStyle(raw?: string): KnowledgeStyle {
   if (value === "cheatsheet" || value === "roadmap") {
     return value;
   }
+  if (
+    value === "concept-graph" ||
+    value === "concept_graph" ||
+    value === "conceptgraph"
+  ) {
+    return "roadmap";
+  }
   return LEGACY_DEPTH_TO_STYLE[value] ?? "cheatsheet";
 }
 
@@ -27,7 +34,7 @@ export function styleSupportsDrill(style: KnowledgeStyle): boolean {
 export function styleLabel(style: KnowledgeStyle): string {
   switch (style) {
     case "roadmap":
-      return "Roadmap";
+      return "Concept graph";
     case "cheatsheet":
     default:
       return "Cheat sheet";

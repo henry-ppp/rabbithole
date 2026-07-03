@@ -121,7 +121,7 @@ export function streamingStatusLabel(
 ): string | null {
   if (!stage) return null;
   if (stage === "skeleton") {
-    return style === "roadmap" ? "Planning roadmap…" : "Planning outline…";
+    return style === "roadmap" ? "Planning concept graph…" : "Planning outline…";
   }
   return style === "roadmap" ? "Writing content…" : "Writing sections…";
 }
