@@ -4,7 +4,7 @@ Ever chase a question so far you forget what you were trying to learn? Rabbithol
 
 ![Rabbithole landing page](./docs/screenshots/landing-page.png)
 
-Built with Cursor agents on a pan/zoom canvas. **Try it live:** [rabbithole-dusky.vercel.app](https://rabbithole-dusky.vercel.app)
+**Live demo:** [rabbithole-dusky.vercel.app](https://rabbithole-dusky.vercel.app)
 
 ## Formats
 
