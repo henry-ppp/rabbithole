@@ -1,12 +1,59 @@
 # Rabbithole
 
-Agent-orchestrated cheat sheets on a pan/zoom canvas (Next.js 16).
+Ever chase a question so far you forget what you were trying to learn? Rabbithole is built around the opposite instinct: show the whole domain first, then let people drill in. It's an agent-orchestrated experiment in "study guides with better UX." Cheat sheet mode for scannable reference, concept graph mode for how ideas connect, and more formats planned as we figure out what helps people orient fastest.
+
+Built with Cursor agents on a pan/zoom canvas. **Try it live:** [rabbithole-dusky.vercel.app](https://rabbithole-dusky.vercel.app)
+
+## Formats
+
+
+| Format            | Style key    | What you get                                                                                     |
+| ----------------- | ------------ | ------------------------------------------------------------------------------------------------ |
+| **Cheat sheet**   | `cheatsheet` | Scannable modules with tables, diagrams, and math — click module titles to drill into sub-sheets |
+| **Concept graph** | `roadmap`    | Interactive DAG of concepts and prerequisites — click nodes to expand key terms                  |
+
+
+Generation streams partial results to the UI so the canvas fills in progressively (skeleton → sections/nodes → final layout).
+
+## Architecture
+
+```
+User topic
+    ↓
+POST /api/cheat-sheet/stream
+    ↓
+Planner agent (style-specific playbook in knowledge/)
+    ↓
+Writer agents (parallel section/node writers)
+    ↓
+Render contract (JSON tree) → React canvas
+```
+
+- **Agents** — `lib/cheat-sheet/orchestrate.ts` runs planner + writer agents via `@cursor/sdk` (local or cloud runtime).
+- **Playbooks** — `knowledge/cheat-sheet/` holds planner/writer prompts and coverage rules per style.
+- **Render contract** — `lib/cheat-sheet/render-contract.ts` defines the JSON tree schema; `lib/cheat-sheet/render-node.tsx` renders cheat sheets.
+- **Concept graph** — `lib/cheat-sheet/concept-graph.ts` + `@xyflow/react` power the roadmap view (`components/cheat-sheet/RoadmapFlowView.tsx`).
+- **Canvas** — Cheat sheets use a custom pan/zoom viewport; concept graphs use React Flow with measured auto-layout.
+
+## Project layout
+
+```
+app/
+  page.tsx                  # Landing page with topic composer
+  cheat-sheet/page.tsx      # Main workspace (header, canvas, drill-down nav)
+  api/cheat-sheet/          # REST + SSE streaming endpoints
+components/cheat-sheet/     # Canvas, nodes, toolbar, style picker
+lib/cheat-sheet/            # Orchestration, parsing, layout, fixtures
+lib/agent-client.ts         # Cursor SDK setup (incl. Vercel /tmp HOME fix)
+knowledge/cheat-sheet/      # Agent playbooks and coverage docs
+scripts/cheat-sheet-e2e.ts  # End-to-end agent pipeline test
+```
 
 ## Getting started
 
 Requires [pnpm](https://pnpm.io/installation) (see `packageManager` in `package.json`).
 
-Native deps (`sharp`, `sqlite3` for `@cursor/sdk`) are allowlisted in [`pnpm-workspace.yaml`](pnpm-workspace.yaml).
+Native deps (`sharp`, `sqlite3` for `@cursor/sdk`) are allowlisted in `[pnpm-workspace.yaml](pnpm-workspace.yaml)`.
 
 ```bash
 pnpm install
@@ -15,17 +62,10 @@ cp .env.example .env.local
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and go to **Cheat sheet canvas**, or visit [http://localhost:3000/cheat-sheet](http://localhost:3000/cheat-sheet).
+Open [http://localhost:3000](http://localhost:3000) or go directly to [http://localhost:3000/cheat-sheet](http://localhost:3000/cheat-sheet).
 
 - **Load fixture** — preview the Git rebase sample (cheat sheet or roadmap, depending on Style).
 - **Generate** — runs style-specific planners and writers via `@cursor/sdk`.
-
-Choose **Style** in the UI:
-
-| Style | Purpose |
-|-------|---------|
-| Cheat sheet | Lookup tables with question frames; supports drill-down |
-| Roadmap | Interactive concept graph on the canvas; no drill-down |
 
 ## Scripts
 
@@ -49,11 +89,19 @@ Legacy `--depth` is accepted and maps to cheat sheet style.
 
 ## Environment
 
-| Variable | Description |
-|----------|-------------|
-| `CURSOR_API_KEY` | Server-only; required for agent generation |
-| `CURSOR_AGENT_RUNTIME` | Optional: `local` (default) or `cloud` |
+
+| Variable               | Description                                |
+| ---------------------- | ------------------------------------------ |
+| `CURSOR_API_KEY`       | Server-only; required for agent generation |
+| `CURSOR_AGENT_RUNTIME` | Optional: `local` (default) or `cloud`     |
+
 
 ### Vercel
 
-Local agents need a writable `HOME`. On Vercel, `lib/agent-client.ts` redirects `HOME` and `TMPDIR` to `/tmp` at startup (dashboard `HOME` overrides are blocked). Set `CURSOR_API_KEY` in project env vars. The Linux native SDK binary (`@cursor/sdk-linux-x64`) is bundled via `serverExternalPackages`. Agent state in `/tmp` is ephemeral per invocation.
+Production: [rabbithole-dusky.vercel.app](https://rabbithole-dusky.vercel.app).
+
+Local agents need a writable `HOME`. On Vercel, `lib/agent-client.ts` redirects `HOME` and `TMPDIR` to `/tmp` at startup (dashboard `HOME` overrides are blocked). The Linux native SDK binary (`@cursor/sdk-linux-x64`) is bundled via `serverExternalPackages`. Agent state in `/tmp` is ephemeral per invocation.
+
+## Stack
+
+Next.js 16 · React 19 · Tailwind CSS 4 · `@cursor/sdk` · `@xyflow/react` · Mermaid · KaTeX
