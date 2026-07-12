@@ -393,7 +393,7 @@ function CheatSheetWorkspace() {
 
   return (
     <div className="flex h-[100dvh] flex-col bg-zinc-50 dark:bg-zinc-950">
-      <header className="flex shrink-0 items-center gap-3 border-b border-zinc-200/70 bg-white/80 px-4 py-2.5 backdrop-blur-xl dark:border-zinc-800/70 dark:bg-zinc-950/80">
+      <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-zinc-200/70 bg-white/80 px-3 py-2 backdrop-blur-xl sm:gap-3 sm:px-4 sm:py-2.5 dark:border-zinc-800/70 dark:bg-zinc-950/80">
         <Link
           href="/"
           className="hidden shrink-0 text-sm font-semibold tracking-tight text-zinc-900 sm:inline dark:text-zinc-50"
@@ -401,7 +401,7 @@ function CheatSheetWorkspace() {
           Rabbithole
         </Link>
 
-        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-full bg-zinc-100/90 px-4 py-2 text-sm transition-shadow focus-within:bg-white focus-within:ring-2 focus-within:ring-zinc-900/10 dark:bg-zinc-900/80 dark:focus-within:bg-zinc-900 dark:focus-within:ring-zinc-100/10">
+        <div className="flex min-w-0 flex-1 basis-full items-center gap-2 rounded-full bg-zinc-100/90 px-3 py-2 text-sm transition-shadow focus-within:bg-white focus-within:ring-2 focus-within:ring-zinc-900/10 sm:basis-auto sm:px-4 dark:bg-zinc-900/80 dark:focus-within:bg-zinc-900 dark:focus-within:ring-zinc-100/10">
           {stack.length > 0 ? (
             <>
               <nav
@@ -436,20 +436,26 @@ function CheatSheetWorkspace() {
           </label>
         </div>
 
-        <StylePicker value={style} onChange={setStyle} size="sm" />
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <StylePicker
+            value={activeResponse ? activeStyle : style}
+            onChange={setStyle}
+            size="sm"
+          />
 
-        <button
-          type="button"
-          disabled={!loading && !topic.trim()}
-          onClick={handleRootSubmit}
-          className={`inline-flex h-9 min-w-[5.75rem] shrink-0 items-center justify-center rounded-full px-4 text-sm font-medium shadow-sm transition-opacity disabled:opacity-40 ${
-            loading
-              ? "border border-zinc-300 bg-white text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
-              : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-          }`}
-        >
-          {loading ? "Stop" : "Generate"}
-        </button>
+          <button
+            type="button"
+            disabled={!loading && !topic.trim()}
+            onClick={handleRootSubmit}
+            className={`inline-flex h-9 min-w-[5.75rem] shrink-0 items-center justify-center rounded-full px-4 text-sm font-medium shadow-sm transition-opacity disabled:opacity-40 ${
+              loading
+                ? "border border-zinc-300 bg-white text-zinc-700 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-200"
+                : "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+            }`}
+          >
+            {loading ? "Stop" : "Generate"}
+          </button>
+        </div>
       </header>
 
       {(error || depthLimitMessage || warnings.length > 0) && (

@@ -204,7 +204,7 @@ export function RoadmapFlowView({
             onLayout={applyLayout}
           />
           <Background gap={20} size={1} className="!bg-transparent" />
-          <Panel position="bottom-left" className="!m-0">
+          <Panel position="bottom-left" className="!mb-4 !ml-4">
             <RoadmapCanvasControls
               onRegenerate={onRegenerate}
               retrialCount={retrialCount}
