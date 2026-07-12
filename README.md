@@ -2,6 +2,8 @@
 
 Ever chase a question so far you forget what you were trying to learn? Rabbithole is built around the opposite instinct: show the whole domain first, then let people drill in. It's an agent-orchestrated experiment in "study guides with better UX." Cheat sheet mode for scannable reference, concept graph mode for how ideas connect, and more formats planned as we figure out what helps people orient fastest.
 
+![Rabbithole landing page](./docs/screenshots/landing-page.png)
+
 Built with Cursor agents on a pan/zoom canvas. **Try it live:** [rabbithole-dusky.vercel.app](https://rabbithole-dusky.vercel.app)
 
 ## Formats
